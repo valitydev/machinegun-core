@@ -197,7 +197,8 @@ add_events(Handlers, _NS, _MachineID, Events, _ReqCtx, _Deadline) ->
 dummy_signal_handler(_Signal, AuxState, _Events) ->
     {AuxState, [], #{}}.
 
--spec dummy_call_handler(signal(), aux_state(), [event()]) -> {ok, aux_state(), [event()], action()}.
+-spec dummy_call_handler(signal(), aux_state(), [event()]) ->
+    {ok, aux_state(), [event()], action()}.
 dummy_call_handler(_Signal, AuxState, _Events) ->
     {ok, AuxState, [], #{}}.
 

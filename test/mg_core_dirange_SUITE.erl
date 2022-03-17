@@ -351,7 +351,8 @@ nonempty_range() ->
 
 -spec check_property(proper:test()) -> boolean().
 check_property(Property) ->
-    proper:quickcheck(Property, [{numtests, 1000}, nocolors]).
+    OuterTest = proper:test_to_outer_test(Property),
+    proper:quickcheck(OuterTest, [{numtests, 1000}, nocolors]).
 
 %%
 

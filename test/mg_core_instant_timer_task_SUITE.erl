@@ -113,7 +113,11 @@ without_shedulers_test(_C) ->
 }).
 -type machine_state() :: #machine_state{}.
 -type processor_result() ::
-    {mg_core_machine:processor_reply_action(), mg_core_machine:processor_flow_action(), machine_state()}.
+    {
+        mg_core_machine:processor_reply_action(),
+        mg_core_machine:processor_flow_action(),
+        machine_state()
+    }.
 
 -spec pool_child_spec(_Options, atom()) -> supervisor:child_spec().
 pool_child_spec(_Options, Name) ->

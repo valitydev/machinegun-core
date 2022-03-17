@@ -138,7 +138,9 @@ base_test(C) ->
     % чтобы увидеть падение воркера линкуемся к нему
     Options = workers_options(?UNLOAD_TIMEOUT, #{link_pid => erlang:self()}, C),
     Pid = start_workers(Options),
-    hello = mg_core_workers_manager:call(Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()),
+    hello = mg_core_workers_manager:call(
+        Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()
+    ),
     ok = wait_machines_unload(?UNLOAD_TIMEOUT),
     ok = stop_workers(Pid).
 
@@ -148,7 +150,9 @@ load_fail_test(C) ->
     Options = workers_options(?UNLOAD_TIMEOUT, #{fail_on => load}, C),
     Pid = start_workers(Options),
     {error, {unexpected_exit, _}} =
-        mg_core_workers_manager:call(Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()),
+        mg_core_workers_manager:call(
+            Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()
+        ),
     ok = wait_machines_unload(?UNLOAD_TIMEOUT),
     ok = stop_workers(Pid).
 
@@ -177,7 +181,9 @@ call_fail_test(C) ->
     Options = workers_options(?UNLOAD_TIMEOUT, #{fail_on => call}, C),
     Pid = start_workers(Options),
     {error, {unexpected_exit, _}} =
-        mg_core_workers_manager:call(Options, <<"43">>, hello, ?REQ_CTX, mg_core_deadline:default()),
+        mg_core_workers_manager:call(
+            Options, <<"43">>, hello, ?REQ_CTX, mg_core_deadline:default()
+        ),
     ok = wait_machines_unload(?UNLOAD_TIMEOUT),
     ok = stop_workers(Pid).
 
@@ -186,7 +192,9 @@ unload_fail_test(C) ->
     % падение при unload'е мы не замечаем :(
     Options = workers_options(?UNLOAD_TIMEOUT, #{fail_on => unload}, C),
     Pid = start_workers(Options),
-    hello = mg_core_workers_manager:call(Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()),
+    hello = mg_core_workers_manager:call(
+        Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()
+    ),
     ok = wait_machines_unload(?UNLOAD_TIMEOUT),
     ok = stop_workers(Pid).
 
@@ -194,7 +202,9 @@ unload_fail_test(C) ->
 unload_test(C) ->
     Options = workers_options(?UNLOAD_TIMEOUT, #{link_pid => self()}, C),
     Pid = start_workers(Options),
-    hello = mg_core_workers_manager:call(Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()),
+    hello = mg_core_workers_manager:call(
+        Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()
+    ),
     WorkerPid = wait_worker_pid(42),
     ok = wait_worker_unload(WorkerPid, ?UNLOAD_TIMEOUT * 2),
     ok = stop_workers(Pid).
@@ -343,7 +353,7 @@ maybe_retry(Reason, RetrySt) ->
     manager_options := mg_core_workers_manager:options()
 }.
 
--type load_job_fun() :: fun((_, _ , _) -> {ok, _} | ok).
+-type load_job_fun() :: fun((_, _, _) -> {ok, _} | ok).
 
 -spec run_load_test(load_options()) -> _.
 run_load_test(
