@@ -40,13 +40,13 @@
 -type test_name() :: atom().
 -type config() :: [{atom(), _}].
 
--spec all() -> [test_name()].
+-spec all() -> [{group, group_name()}].
 all() ->
     [
         {group, main}
     ].
 
--spec groups() -> [{group_name(), list(_), test_name()}].
+-spec groups() -> [{group_name(), list(_), [test_name()]}].
 groups() ->
     [
         {main, [sequence], [
@@ -132,7 +132,11 @@ automaton_options() ->
     #{
         namespace => <<"test_tags">>,
         storage => mg_core_storage_memory,
-        worker => #{registry => mg_core_procreg_gproc},
+        worker => #{
+            name => <<"NAME">>,
+            pulse => undefined,
+            registry => mg_core_procreg_gproc
+        },
         pulse => ?MODULE,
         retries => #{}
     }.

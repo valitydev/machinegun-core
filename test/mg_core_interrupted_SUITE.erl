@@ -66,7 +66,10 @@ end_per_suite(C) ->
 -spec interrupted_machines_resumed(config()) -> _.
 interrupted_machines_resumed(_C) ->
     NS = genlib:to_binary(?FUNCTION_NAME),
-    {ok, StoragePid} = mg_core_storage_memory:start_link(#{name => ?MODULE}),
+    {ok, StoragePid} = mg_core_storage_memory:start_link(#{
+        name => ?MODULE,
+        pulse => undefined
+    }),
     true = erlang:unlink(StoragePid),
     Options = automaton_options(NS, ?MODULE),
 
@@ -166,6 +169,8 @@ automaton_options(NS, StorageName) ->
             }}
         ),
         worker => #{
+            name => <<"NAME">>,
+            pulse => undefined,
             registry => mg_core_procreg_gproc
         },
         pulse => ?MODULE,

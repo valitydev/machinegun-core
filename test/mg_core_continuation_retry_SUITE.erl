@@ -133,7 +133,11 @@ automaton_options() ->
         namespace => ?MH_NS,
         processor => ?MODULE,
         storage => mg_core_storage_memory,
-        worker => #{registry => mg_core_procreg_gproc},
+        worker => #{
+            name => <<"NAME">>,
+            pulse => undefined,
+            registry => mg_core_procreg_gproc
+        },
         pulse => ?MODULE,
         retries => #{
             continuation => {intervals, ?TEST_INTERVALS}

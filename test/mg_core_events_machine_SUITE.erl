@@ -66,6 +66,9 @@
     call_handler => fun(
         (call(), aux_state(), [event()]) -> {term(), aux_state(), [event()], action()}
     ),
+    repair_handler => fun(
+        (call(), aux_state(), [event()]) -> {term(), aux_state(), [event()], action()}
+    ),
     sink_handler => fun((history()) -> ok)
 }.
 
@@ -122,6 +125,8 @@ get_events_test(_C) ->
                 event_stash_size => rand:uniform(2 * I)
             },
             StorageOpts = #{
+                name => <<"NAME">>,
+                pulse => undefined,
                 batching => #{concurrency_limit => rand:uniform(5 * I)},
                 random_transient_fail => #{put => 0.1 / N}
             },
@@ -155,8 +160,8 @@ get_events_test(_C) ->
     ).
 
 -spec assert_history_consistent
-    (history(), mg_core_events:history_range()) -> ok;
-    (history(), _Assertion :: {from | limit | direction, _}) -> ok.
+    (history(), mg_core_events:history_range()) -> boolean() | ok;
+    (history(), _Assertion :: {from | limit | direction, _}) -> boolean() | ok.
 assert_history_consistent(History, HRange = {From, Limit, Direction}) ->
     Result = lists:all(fun(Assert) -> assert_history_consistent(History, Assert) end, [
         {from, {From, Direction}},
@@ -225,10 +230,10 @@ continuation_repair_test(_C) ->
     },
     {Pid, Options} = start_automaton(ProcessorOptions, NS),
     ok = start(Options, MachineID, <<>>),
-    ?assertReceive({sink_events, [1]}),
+    _ = ?assertReceive({sink_events, [1]}),
     ?assertException(throw, {logic, machine_failed}, call(Options, MachineID, raise)),
     ok = repair(Options, MachineID, <<>>),
-    ?assertReceive({sink_events, [2, 3]}),
+    _ = ?assertReceive({sink_events, [2, 3]}),
     ?assertEqual([{1, 1}, {2, 2}, {3, 3}], get_history(Options, MachineID)),
     ok = stop_automaton(Pid).
 
@@ -271,7 +276,10 @@ get_corrupted_machine_fails(_C) ->
     },
     BaseOptions = events_machine_options(
         #{event_stash_size => 0},
-        #{},
+        #{
+            name => <<"NAME">>,
+            pulse => undefined
+        },
         ProcessorOpts,
         NS
     ),
@@ -380,7 +388,7 @@ delegate_request(#{name := Name, pulse := Pulse, storage := {Module, Options}}, 
 
 %% Utils
 
--spec start_automaton(options(), mg_core:ns()) -> pid().
+-spec start_automaton(options(), mg_core:ns()) -> {pid(), mg_core_events_machine:options()}.
 start_automaton(ProcessorOptions, NS) ->
     start_automaton(events_machine_options(ProcessorOptions, NS)).
 
@@ -396,7 +404,11 @@ stop_automaton(Pid) ->
 
 -spec events_machine_options(options(), mg_core:ns()) -> mg_core_events_machine:options().
 events_machine_options(Options, NS) ->
-    events_machine_options(#{}, #{}, Options, NS).
+    StorageOptions = #{
+        name => <<"NAME">>,
+        pulse => undefined
+    },
+    events_machine_options(#{}, StorageOptions, Options, NS).
 
 -spec events_machine_options(BaseOptions, StorageOptions, options(), mg_core:ns()) ->
     mg_core_events_machine:options()
@@ -428,6 +440,8 @@ events_machine_options(Base, StorageOptions, ProcessorOptions, NS) ->
             namespace => <<NS/binary, "_tags">>,
             storage => Storage,
             worker => #{
+                name => <<"NAME">>,
+                pulse => undefined,
                 registry => mg_core_procreg_gproc
             },
             pulse => Pulse,
@@ -437,6 +451,8 @@ events_machine_options(Base, StorageOptions, ProcessorOptions, NS) ->
             namespace => NS,
             storage => mg_core_ct_helper:build_storage(NS, Storage),
             worker => #{
+                name => <<"NAME">>,
+                pulse => undefined,
                 registry => mg_core_procreg_gproc
             },
             pulse => Pulse,
@@ -514,7 +530,7 @@ extract_events(History) ->
 decode_machine(#{aux_state := EncodedAuxState, history := EncodedHistory}) ->
     {decode_aux_state(EncodedAuxState), decode_history(EncodedHistory)}.
 
--spec decode_aux_state(mg_core_events_machine:aux_state()) -> aux_state().
+-spec decode_aux_state(mg_core_events:content()) -> aux_state().
 decode_aux_state({#{format_version := 1}, EncodedAuxState}) ->
     decode(EncodedAuxState);
 decode_aux_state({#{}, <<>>}) ->

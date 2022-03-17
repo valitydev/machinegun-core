@@ -138,7 +138,7 @@ base_test(C) ->
     % чтобы увидеть падение воркера линкуемся к нему
     Options = workers_options(?UNLOAD_TIMEOUT, #{link_pid => erlang:self()}, C),
     Pid = start_workers(Options),
-    hello = mg_core_workers_manager:call(Options, 42, hello, ?REQ_CTX, mg_core_deadline:default()),
+    hello = mg_core_workers_manager:call(Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()),
     ok = wait_machines_unload(?UNLOAD_TIMEOUT),
     ok = stop_workers(Pid).
 
@@ -148,7 +148,7 @@ load_fail_test(C) ->
     Options = workers_options(?UNLOAD_TIMEOUT, #{fail_on => load}, C),
     Pid = start_workers(Options),
     {error, {unexpected_exit, _}} =
-        mg_core_workers_manager:call(Options, 42, hello, ?REQ_CTX, mg_core_deadline:default()),
+        mg_core_workers_manager:call(Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()),
     ok = wait_machines_unload(?UNLOAD_TIMEOUT),
     ok = stop_workers(Pid).
 
@@ -163,7 +163,7 @@ load_error_test(C) ->
     Pid = start_workers(Options),
     {error, test_error} = mg_core_workers_manager:call(
         Options,
-        42,
+        <<"42">>,
         hello,
         ?REQ_CTX,
         mg_core_deadline:default()
@@ -177,7 +177,7 @@ call_fail_test(C) ->
     Options = workers_options(?UNLOAD_TIMEOUT, #{fail_on => call}, C),
     Pid = start_workers(Options),
     {error, {unexpected_exit, _}} =
-        mg_core_workers_manager:call(Options, 43, hello, ?REQ_CTX, mg_core_deadline:default()),
+        mg_core_workers_manager:call(Options, <<"43">>, hello, ?REQ_CTX, mg_core_deadline:default()),
     ok = wait_machines_unload(?UNLOAD_TIMEOUT),
     ok = stop_workers(Pid).
 
@@ -186,7 +186,7 @@ unload_fail_test(C) ->
     % падение при unload'е мы не замечаем :(
     Options = workers_options(?UNLOAD_TIMEOUT, #{fail_on => unload}, C),
     Pid = start_workers(Options),
-    hello = mg_core_workers_manager:call(Options, 42, hello, ?REQ_CTX, mg_core_deadline:default()),
+    hello = mg_core_workers_manager:call(Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()),
     ok = wait_machines_unload(?UNLOAD_TIMEOUT),
     ok = stop_workers(Pid).
 
@@ -194,7 +194,7 @@ unload_fail_test(C) ->
 unload_test(C) ->
     Options = workers_options(?UNLOAD_TIMEOUT, #{link_pid => self()}, C),
     Pid = start_workers(Options),
-    hello = mg_core_workers_manager:call(Options, 42, hello, ?REQ_CTX, mg_core_deadline:default()),
+    hello = mg_core_workers_manager:call(Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()),
     WorkerPid = wait_worker_pid(42),
     ok = wait_worker_unload(WorkerPid, ?UNLOAD_TIMEOUT * 2),
     ok = stop_workers(Pid).
@@ -206,7 +206,7 @@ unload_loading_test(C) ->
     Pid = start_workers(Options),
     {error, {timeout, _}} = mg_core_workers_manager:call(
         Options,
-        42,
+        <<"42">>,
         hello,
         ?REQ_CTX,
         mg_core_deadline:from_timeout(LoadLag div 2)
@@ -250,6 +250,7 @@ stress_test(C) ->
     end,
     ok = run_load_test(#{
         duration => 10 * 1000,
+        workers => WorkersCount,
         runners => RunnersCount,
         job => {Job, RetryStrategy},
         manager_options => workers_options(UnloadTimeout, #{link_pid => erlang:self()}, C)
@@ -261,7 +262,7 @@ stress_test(C) ->
     retry_strategy()
 ) -> ok.
 stress_test_do_test_call(Options, WorkersCount, RetrySt) ->
-    ID = rand:uniform(WorkersCount),
+    ID = erlang:integer_to_binary(rand:uniform(WorkersCount)),
     % проверим, что отвечают действительно на наш запрос
     Call = {hello, erlang:make_ref()},
     case mg_core_workers_manager:call(Options, ID, Call, ?REQ_CTX, mg_core_deadline:default()) of
@@ -273,11 +274,13 @@ stress_test_do_test_call(Options, WorkersCount, RetrySt) ->
 manager_contention_test(C) ->
     Concurrency = erlang:system_info(schedulers),
     RunnersCount = ?config(load_pressure, C) * Concurrency,
+    WorkersCount = RunnersCount div 20,
     % чтобы машины выгружались в процессе теста
     UnloadTimeout = 100,
     RetryStrategy = ?config(runner_retry_strategy, C),
     ok = run_load_test(#{
         duration => 10 * 1000,
+        workers => WorkersCount,
         runners => RunnersCount,
         job => {fun manager_contention_test_call/3, RetryStrategy},
         manager_options => workers_options(
@@ -290,9 +293,9 @@ manager_contention_test(C) ->
 
 -spec manager_contention_test_call(
     mg_core_workers_manager:options(),
-    pos_integer(),
+    binary(),
     retry_strategy()
-) -> ok.
+) -> ok | {ok, #{_ => genlib_retry:strategy()}}.
 manager_contention_test_call(Options, N, RetrySt) ->
     % проверим, что отвечают действительно на наш запрос
     Call = {hello, erlang:make_ref()},
@@ -340,7 +343,7 @@ maybe_retry(Reason, RetrySt) ->
     manager_options := mg_core_workers_manager:options()
 }.
 
--type load_job_fun() :: fun((_N :: pos_integer()) -> no_return()).
+-type load_job_fun() :: fun((_, _ , _) -> {ok, _} | ok).
 
 -spec run_load_test(load_options()) -> _.
 run_load_test(
@@ -356,7 +359,7 @@ run_load_test(
     WorkersPid = start_workers(ManagerOptions),
     _ = ct:pal("===> [~p] start workers done", [now_diff(Ts)]),
     RunnerPids = [
-        stress_test_start_process(ManagerOptions, Job, N, St0)
+        stress_test_start_process(ManagerOptions, Job, erlang:integer_to_binary(N), St0)
      || N <- lists:seq(1, RunnersCount)
     ],
     _ = ct:pal("===> [~p] start runners done", [now_diff(Ts)]),
@@ -375,7 +378,7 @@ now_diff(Ts) ->
 -spec stress_test_start_process(
     mg_core_workers_manager:options(),
     load_job_fun(),
-    _N :: pos_integer(),
+    _N :: binary(),
     _State
 ) -> pid().
 stress_test_start_process(Options, Job, N, State) ->
@@ -398,7 +401,7 @@ workers_options(UnloadTimeout, WorkerParams, C) ->
     mg_core_workers_manager:options().
 workers_options(UnloadTimeout, MsgQueueLen, WorkerParams, C) ->
     #{
-        name => base_test_workers,
+        name => <<"base_test_workers">>,
         pulse => undefined,
         registry => ?config(registry, C),
         message_queue_len_limit => MsgQueueLen,
@@ -424,7 +427,7 @@ workers_options(UnloadTimeout, MsgQueueLen, WorkerParams, C) ->
 }.
 -type worker_state() :: worker_params().
 
--spec handle_load(_ID, _, worker_params()) -> {ok, worker_state()} | {error, _}.
+-spec handle_load(_ID, _, binary()) -> {ok, worker_state()} | {error, _}.
 handle_load(_, #{load_error := Reason}, ?REQ_CTX) ->
     {error, Reason};
 handle_load(ID, Params, ?REQ_CTX) ->
