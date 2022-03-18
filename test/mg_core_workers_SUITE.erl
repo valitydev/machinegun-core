@@ -205,7 +205,7 @@ unload_test(C) ->
     hello = mg_core_workers_manager:call(
         Options, <<"42">>, hello, ?REQ_CTX, mg_core_deadline:default()
     ),
-    WorkerPid = wait_worker_pid(42),
+    WorkerPid = wait_worker_pid(<<"42">>),
     ok = wait_worker_unload(WorkerPid, ?UNLOAD_TIMEOUT * 2),
     ok = stop_workers(Pid).
 
@@ -221,7 +221,7 @@ unload_loading_test(C) ->
         ?REQ_CTX,
         mg_core_deadline:from_timeout(LoadLag div 2)
     ),
-    WorkerPid = wait_worker_pid(42),
+    WorkerPid = wait_worker_pid(<<"42">>),
     ok = wait_worker_unload(WorkerPid, LoadLag + ?UNLOAD_TIMEOUT * 2),
     ok = stop_workers(Pid).
 
