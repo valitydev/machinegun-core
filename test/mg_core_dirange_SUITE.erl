@@ -169,6 +169,8 @@ conjoin_test(_) ->
     ?assertError(badarg, mg_core_dirange:conjoin(bw(10, 10), fw(1, 9))),
     ?assertError(badarg, mg_core_dirange:conjoin(bw(10, 9), bw(9, 1))).
 
+%% Used to suppress warning for mg_core_dirange:intersect/2 error assertion
+-dialyzer({nowarn_function, intersect_test/1}).
 -spec intersect_test(config()) -> _.
 intersect_test(_) ->
     ?assertEqual({empty(), empty(), empty()}, mg_core_dirange:intersect(empty(), fw(1, 10))),
