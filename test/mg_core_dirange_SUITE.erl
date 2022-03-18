@@ -259,8 +259,10 @@ unify_test(_) ->
                 begin
                     RU = mg_core_dirange:unify(R0, R1),
                     conjunction([
-                        {no_smaller_than_r0, mg_core_dirange:size(RU) >= mg_core_dirange:size(R0)},
-                        {no_smaller_than_r1, mg_core_dirange:size(RU) >= mg_core_dirange:size(R1)}
+                        {no_smaller_than_r0,
+                            equals(mg_core_dirange:size(RU) >= mg_core_dirange:size(R0), true)},
+                        {no_smaller_than_r1,
+                            equals(mg_core_dirange:size(RU) >= mg_core_dirange:size(R1), true)}
                     ])
                 end
             )
