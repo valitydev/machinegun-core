@@ -107,9 +107,21 @@ do_produce(Client, Topic, PartitionKey, Batch) ->
         {error, _Reason} = Error ->
             Error
     catch
-        exit:{[{_Args, {timeout, _ST}}], _} ->
-            {error, timeout}
+        exit:{Reasons, _} = Error when is_list(Reasons) ->
+            case lists:all(fun is_timeout_reason/1, Reasons) of
+                true ->
+                    {error, timeout};
+                false ->
+                    exit(Error)
+            end
     end.
+
+is_timeout_reason({_, {timeout, _ST}}) ->
+    true;
+is_timeout_reason({_, {{failed_to_upgrade_to_ssl,timeout}, _ST}}) ->
+    true;
+is_timeout_reason(_Reason) ->
+    false.
 
 -spec handle_produce_error(atom()) -> no_return().
 handle_produce_error(timeout) ->
