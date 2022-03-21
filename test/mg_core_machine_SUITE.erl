@@ -227,8 +227,6 @@ automaton_options(C) ->
         processor => ?MODULE,
         storage => mg_core_storage_memory,
         worker => #{
-            name => <<"NAME">>,
-            pulse => undefined,
             registry => ?config(registry, C)
         },
         pulse => ?MODULE,

@@ -244,8 +244,6 @@ events_machine_options(Options) ->
                     existing_storage_name => ?MODULE
                 }},
             worker => #{
-                name => <<"NAME">>,
-                pulse => undefined,
                 registry => mg_core_procreg_gproc
             },
             pulse => ?MODULE,
@@ -258,8 +256,6 @@ events_machine_options(Options) ->
                     existing_storage_name => ?MODULE
                 }},
             worker => #{
-                name => <<"NAME">>,
-                pulse => undefined,
                 registry => mg_core_procreg_gproc
             },
             pulse => ?MODULE,

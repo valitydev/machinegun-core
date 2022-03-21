@@ -149,8 +149,6 @@ event_sink_ns_options() ->
         namespace => ?ES_ID,
         storage => mg_core_storage_memory,
         worker => #{
-            name => <<"NAME">>,
-            pulse => undefined,
             registry => mg_core_procreg_gproc
         },
         pulse => ?MODULE,
@@ -166,8 +164,6 @@ event_sink_options() ->
         namespace => ?ES_ID,
         storage => mg_core_storage_memory,
         worker => #{
-            name => <<"NAME">>,
-            pulse => undefined,
             registry => mg_core_procreg_gproc
         },
         pulse => ?MODULE,

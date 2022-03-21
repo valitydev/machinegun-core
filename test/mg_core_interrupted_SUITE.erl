@@ -169,8 +169,6 @@ automaton_options(NS, StorageName) ->
             }}
         ),
         worker => #{
-            name => <<"NAME">>,
-            pulse => undefined,
             registry => mg_core_procreg_gproc
         },
         pulse => ?MODULE,

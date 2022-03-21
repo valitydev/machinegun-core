@@ -125,8 +125,6 @@ get_events_test(_C) ->
                 event_stash_size => rand:uniform(2 * I)
             },
             StorageOpts = #{
-                name => <<"NAME">>,
-                pulse => undefined,
                 batching => #{concurrency_limit => rand:uniform(5 * I)},
                 random_transient_fail => #{put => 0.1 / N}
             },
@@ -276,10 +274,7 @@ get_corrupted_machine_fails(_C) ->
     },
     BaseOptions = events_machine_options(
         #{event_stash_size => 0},
-        #{
-            name => <<"NAME">>,
-            pulse => undefined
-        },
+        #{},
         ProcessorOpts,
         NS
     ),
@@ -404,17 +399,13 @@ stop_automaton(Pid) ->
 
 -spec events_machine_options(options(), mg_core:ns()) -> mg_core_events_machine:options().
 events_machine_options(Options, NS) ->
-    StorageOptions = #{
-        name => <<"NAME">>,
-        pulse => undefined
-    },
-    events_machine_options(#{}, StorageOptions, Options, NS).
+    events_machine_options(#{}, #{}, Options, NS).
 
 -spec events_machine_options(BaseOptions, StorageOptions, options(), mg_core:ns()) ->
     mg_core_events_machine:options()
 when
     BaseOptions :: mg_core_events_machine:options(),
-    StorageOptions :: mg_core_storage:storage_options().
+    StorageOptions :: map().
 events_machine_options(Base, StorageOptions, ProcessorOptions, NS) ->
     Scheduler = #{
         min_scan_delay => 1000,
@@ -440,8 +431,6 @@ events_machine_options(Base, StorageOptions, ProcessorOptions, NS) ->
             namespace => <<NS/binary, "_tags">>,
             storage => Storage,
             worker => #{
-                name => <<"NAME">>,
-                pulse => undefined,
                 registry => mg_core_procreg_gproc
             },
             pulse => Pulse,
@@ -451,8 +440,6 @@ events_machine_options(Base, StorageOptions, ProcessorOptions, NS) ->
             namespace => NS,
             storage => mg_core_ct_helper:build_storage(NS, Storage),
             worker => #{
-                name => <<"NAME">>,
-                pulse => undefined,
                 registry => mg_core_procreg_gproc
             },
             pulse => Pulse,

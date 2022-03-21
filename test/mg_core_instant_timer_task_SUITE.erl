@@ -204,8 +204,6 @@ automaton_options(NS) ->
         processor => ?MODULE,
         storage => mg_core_ct_helper:build_storage(NS, mg_core_storage_memory),
         worker => #{
-            name => <<"NAME">>,
-            pulse => undefined,
             registry => mg_core_procreg_gproc
         },
         pulse => ?MODULE,
@@ -223,8 +221,6 @@ automaton_options_wo_shedulers(NS) ->
         processor => ?MODULE,
         storage => mg_core_ct_helper:build_storage(NS, mg_core_storage_memory),
         worker => #{
-            name => <<"NAME">>,
-            pulse => undefined,
             registry => mg_core_procreg_gproc
         },
         pulse => ?MODULE,

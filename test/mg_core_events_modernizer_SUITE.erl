@@ -197,8 +197,6 @@ events_machine_options(ProcessorOptions, NS) ->
             namespace => <<NS/binary, "_tags">>,
             storage => Storage,
             worker => #{
-                name => <<"NAME">>,
-                pulse => undefined,
                 registry => mg_core_procreg_gproc
             },
             pulse => Pulse,
@@ -208,8 +206,6 @@ events_machine_options(ProcessorOptions, NS) ->
             namespace => NS,
             storage => mg_core_ct_helper:build_storage(NS, Storage),
             worker => #{
-                name => <<"NAME">>,
-                pulse => undefined,
                 registry => mg_core_procreg_gproc
             },
             pulse => Pulse

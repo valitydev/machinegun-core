@@ -260,7 +260,6 @@ stress_test(C) ->
     end,
     ok = run_load_test(#{
         duration => 10 * 1000,
-        workers => WorkersCount,
         runners => RunnersCount,
         job => {Job, RetryStrategy},
         manager_options => workers_options(UnloadTimeout, #{link_pid => erlang:self()}, C)
@@ -284,13 +283,11 @@ stress_test_do_test_call(Options, WorkersCount, RetrySt) ->
 manager_contention_test(C) ->
     Concurrency = erlang:system_info(schedulers),
     RunnersCount = ?config(load_pressure, C) * Concurrency,
-    WorkersCount = RunnersCount div 20,
     % чтобы машины выгружались в процессе теста
     UnloadTimeout = 100,
     RetryStrategy = ?config(runner_retry_strategy, C),
     ok = run_load_test(#{
         duration => 10 * 1000,
-        workers => WorkersCount,
         runners => RunnersCount,
         job => {fun manager_contention_test_call/3, RetryStrategy},
         manager_options => workers_options(
@@ -347,7 +344,6 @@ maybe_retry(Reason, RetrySt) ->
 
 -type load_options() :: #{
     duration := timeout(),
-    workers := pos_integer(),
     runners := pos_integer(),
     job := {load_job_fun(), _InitialState},
     manager_options := mg_core_workers_manager:options()

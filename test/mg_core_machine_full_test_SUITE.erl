@@ -263,8 +263,6 @@ automaton_options() ->
         processor => ?MODULE,
         storage => mg_core_storage_memory,
         worker => #{
-            name => <<"NAME">>,
-            pulse => undefined,
             registry => mg_core_procreg_gproc
         },
         pulse => ?MODULE
