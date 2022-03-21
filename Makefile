@@ -105,7 +105,3 @@ test: eunit common-test
 
 cover-report:
 	$(REBAR) cover
-
-FILE_PERMISSIONS = $(patsubst %,%.target,$(wildcard config/*._perms))
-$(FILE_PERMISSIONS): config/%._perms.target: config/%._perms
-	chmod $$(cat $^) config/$*

@@ -158,17 +158,10 @@ event_sink_ns_options() ->
 
 -spec event_sink_options() -> mg_core_events_sink_machine:options().
 event_sink_options() ->
-    #{
+    NSOptions = event_sink_ns_options(),
+    NSOptions#{
         name => machine,
-        machine_id => ?ES_ID,
-        namespace => ?ES_ID,
-        storage => mg_core_storage_memory,
-        worker => #{
-            registry => mg_core_procreg_gproc
-        },
-        pulse => ?MODULE,
-        default_processing_timeout => 1000,
-        events_storage => mg_core_storage_memory
+        machine_id => ?ES_ID
     }.
 
 -spec handle_beat(_, mg_core_pulse:beat()) -> ok.
