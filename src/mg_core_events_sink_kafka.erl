@@ -107,40 +107,20 @@ do_produce(Client, Topic, PartitionKey, Batch) ->
         {error, _Reason} = Error ->
             Error
     catch
-        exit:{Reasons, _} = Error when is_list(Reasons) ->
-            case lists:all(fun is_connectivity_reason/1, Reasons) of
-                true ->
-                    {error, kafka_connectivity_error};
-                false ->
-                    exit(Error)
-            end
+        exit:Reason ->
+            {error, {exit, Reason}}
     end.
-
--spec is_connectivity_reason(_Reason) -> true.
-is_connectivity_reason({_, {timeout, _ST}}) ->
-    true;
-is_connectivity_reason({_, {econnaborted, _ST}}) ->
-    true;
-is_connectivity_reason({_, {econnrefused, _ST}}) ->
-    true;
-is_connectivity_reason({_, {econnreset, _ST}}) ->
-    true;
-is_connectivity_reason({_, {ehostdown, _ST}}) ->
-    true;
-is_connectivity_reason({_, {ehostunreach, _ST}}) ->
-    true;
-is_connectivity_reason({_, {{failed_to_upgrade_to_ssl, _SSLError}, _ST}}) ->
-    true;
-is_connectivity_reason({_, {{failed_to_query_api_versions, _ErrorCode}, _ST}}) ->
-    true;
-is_connectivity_reason(_Reason) ->
-    false.
 
 -spec handle_produce_error(atom()) -> no_return().
 handle_produce_error(timeout) ->
     erlang:throw({transient, timeout});
-handle_produce_error(kafka_connectivity_error) ->
-    erlang:throw({transient, kafka_connectivity_error});
+handle_produce_error({exit, {Reasons = [_ | _], _} = Error}) ->
+    case lists:any(fun is_connectivity_reason/1, Reasons) of
+        true ->
+            erlang:throw({transient, {kafka_connectivity_error, Reasons}});
+        false ->
+            exit(Error)
+    end;
 handle_produce_error({producer_down, Reason}) ->
     erlang:throw({transient, {event_sink_unavailable, {producer_down, Reason}}});
 handle_produce_error(Reason) ->
@@ -181,6 +161,24 @@ handle_produce_error(Reason) ->
         error ->
             erlang:error({?MODULE, {unexpected, Reason}})
     end.
+
+-spec is_connectivity_reason(_Reason) -> true.
+is_connectivity_reason({_, {timeout, _ST}}) ->
+    true;
+is_connectivity_reason({_, {econnaborted, _ST}}) ->
+    true;
+is_connectivity_reason({_, {econnrefused, _ST}}) ->
+    true;
+is_connectivity_reason({_, {econnreset, _ST}}) ->
+    true;
+is_connectivity_reason({_, {ehostdown, _ST}}) ->
+    true;
+is_connectivity_reason({_, {ehostunreach, _ST}}) ->
+    true;
+is_connectivity_reason({_, {{failed_to_upgrade_to_ssl, _SSLError}, _ST}}) ->
+    true;
+is_connectivity_reason(_Reason) ->
+    false.
 
 -spec batch_size(brod:batch_input()) -> non_neg_integer().
 batch_size(Batch) ->
