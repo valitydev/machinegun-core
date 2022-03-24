@@ -114,12 +114,12 @@ do_produce(Client, Topic, PartitionKey, Batch) ->
 -spec handle_produce_error(atom()) -> no_return().
 handle_produce_error(timeout) ->
     erlang:throw({transient, timeout});
-handle_produce_error({exit, {Reasons = [_ | _], _} = Error}) ->
+handle_produce_error({exit, {Reasons = [_ | _], _}}) ->
     case lists:any(fun is_connectivity_reason/1, Reasons) of
         true ->
-            erlang:throw({transient, {kafka_connectivity_error, Reasons}});
+            erlang:throw({transient, {event_sink_unavailable, {connect_failed, Reasons}}});
         false ->
-            exit(Error)
+            erlang:error({?MODULE, {unexpected, Reasons}})
     end;
 handle_produce_error({producer_down, Reason}) ->
     erlang:throw({transient, {event_sink_unavailable, {producer_down, Reason}}});
@@ -162,7 +162,8 @@ handle_produce_error(Reason) ->
             erlang:error({?MODULE, {unexpected, Reason}})
     end.
 
--spec is_connectivity_reason(_Reason) -> true.
+-spec is_connectivity_reason({inet:hostname(), {inet:posix() | {failed_to_upgrade_to_ssl, _SSLError}, _ST}}) ->
+    boolean().
 is_connectivity_reason({_, {timeout, _ST}}) ->
     true;
 is_connectivity_reason({_, {econnaborted, _ST}}) ->
