@@ -162,7 +162,9 @@ handle_produce_error(Reason) ->
             erlang:error({?MODULE, {unexpected, Reason}})
     end.
 
--spec is_connectivity_reason({inet:hostname(), {inet:posix() | {failed_to_upgrade_to_ssl, _SSLError}, _ST}}) ->
+-spec is_connectivity_reason(
+    {inet:hostname(), {inet:posix() | {failed_to_upgrade_to_ssl, _SSLError}, _ST}}
+) ->
     boolean().
 is_connectivity_reason({_, {timeout, _ST}}) ->
     true;
