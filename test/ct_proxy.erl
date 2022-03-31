@@ -34,6 +34,11 @@
     endpoint => endpoint()
 }.
 
+-type activity() ::
+    stop
+    | ignore
+    | {remote, {inet:ip_address(), inet:port_number()}}.
+
 -spec start_link(endpoint()) -> {ok, proxy()}.
 
 -spec start_link(endpoint(), ranch_tcp:opts()) -> {ok, proxy()}.
@@ -70,7 +75,7 @@ start_link(Upstream, SocketOpts) ->
         endpoint => {inet:ntoa(IP), Port}
     }}.
 
--spec resolve_endpoint(endpoint()) -> endpoint().
+-spec resolve_endpoint(endpoint()) -> {inet:ip_address(), inet:port_number()}.
 resolve_endpoint({Host, Port}) ->
     {ok, #hostent{h_addr_list = [Address | _Rest]}} = inet:gethostbyname(Host),
     {Address, Port}.
@@ -89,7 +94,7 @@ stop(#{supervisor := SupPid}) ->
 
 %%
 
--spec proxy(pid(), binary()) -> ct_proxy_protocol:activity().
+-spec proxy(pid(), binary()) -> activity().
 proxy(DriverPid, Buffer) ->
     gen_server:call(DriverPid, {proxy, Buffer}).
 

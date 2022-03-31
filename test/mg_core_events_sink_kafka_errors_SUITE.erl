@@ -24,6 +24,8 @@
 -export([groups/0]).
 -export([init_per_suite/1]).
 -export([end_per_suite/1]).
+-export([init_per_testcase/2]).
+-export([end_per_testcase/2]).
 
 %% tests
 -export([add_events_test/1]).
@@ -34,7 +36,7 @@
 -define(TOPIC, <<"test_event_sink">>).
 -define(SOURCE_NS, <<"source_ns">>).
 -define(SOURCE_ID, <<"source_id">>).
--define(BROKERS, [{"kafka1", 9092}, {"kafka2", 9092}, {"kafka3", 9092}]).
+-define(BROKERS, [{"kafka2", 9092}, {"kafka3", 9092}]).
 -define(CLIENT, mg_core_kafka_client).
 
 %%
@@ -65,16 +67,8 @@ groups() ->
 init_per_suite(C) ->
     % dbg:tracer(), dbg:p(all, c),
     % dbg:tpl({mg_core_events_sink_kafka, '_', '_'}, x),
-    {ok, Proxy = #{endpoint := {Host, Port}}} = ct_proxy:start_link({"consul0", 8500}),
     AppSpecs = [
-        {brod, [
-            {clients, [
-                {?CLIENT, [
-                    {endpoints, [{Host, Port}]},
-                    {auto_start_producers, true}
-                ]}
-            ]}
-        ]},
+        {ranch, []},
         {machinegun_core, []}
     ],
     Apps = lists:flatten([
@@ -85,11 +79,30 @@ init_per_suite(C) ->
         [{#{}, Body} || Body <- [1, 2, 3]],
         undefined
     ),
-    [{apps, Apps}, {events, Events}, {proxy, Proxy} | C].
+    [{apps, Apps}, {events, Events} | C].
 
 -spec end_per_suite(config()) -> ok.
 end_per_suite(C) ->
     mg_core_ct_helper:stop_applications(?config(apps, C)).
+
+-spec init_per_testcase(test_name(), config()) -> config().
+init_per_testcase(Name, C) ->
+    {ok, Proxy = #{endpoint := {Host, Port}}} = ct_proxy:start_link({"kafka1", 9092}),
+    Apps =
+        genlib_app:start_application_with(brod, [
+            {clients, [
+                {?CLIENT, [
+                    {endpoints, [{Host, Port} | ?BROKERS]},
+                    {auto_start_producers, true}
+                ]}
+            ]}
+        ]) ++ ?config(apps, C),
+    [{apps, Apps}, {proxy, Proxy}, {testcase, Name} | C].
+
+-spec end_per_testcase(test_name(), config()) -> ok.
+end_per_testcase(_Name, C) ->
+    _ = (catch ct_proxy:stop(?config(proxy, C))),
+    ok.
 
 %%
 %% tests
@@ -97,22 +110,18 @@ end_per_suite(C) ->
 
 -spec add_events_test(config()) -> _.
 add_events_test(C) ->
-    ?assertEqual(ok, add_events(C)).
-
-%%
-%% utils
-%%
-
--spec add_events(config()) -> ok.
-add_events(C) ->
     ok = change_proxy_mode(pass, stop, C),
-    ok = mg_core_events_sink_kafka:add_events(
-        event_sink_options(),
-        ?SOURCE_NS,
-        ?SOURCE_ID,
-        ?config(events, C),
-        null,
-        mg_core_deadline:default()
+    _ = ?assertException(
+        throw,
+        {transient, {event_sink_unavailable, client_down}},
+        mg_core_events_sink_kafka:add_events(
+            event_sink_options(),
+            ?SOURCE_NS,
+            ?SOURCE_ID,
+            ?config(events, C),
+            null,
+            mg_core_deadline:default()
+        )
     ).
 
 -spec event_sink_options() -> mg_core_events_sink_kafka:options().
@@ -134,6 +143,10 @@ handle_beat(_, Beat) ->
 -spec change_proxy_mode(atom(), atom(), config()) -> ok.
 change_proxy_mode(ModeWas, Mode, C) ->
     Proxy = ?config(proxy, C),
-    _ = ct:pal(debug, "[~p] setting proxy from '~p' to '~p'", [?config(testcase, C), ModeWas, Mode]),
+    _ = ct:pal(
+        debug,
+        "[~p] setting proxy from '~p' to '~p'",
+        [?config(testcase, C), ModeWas, Mode]
+    ),
     _ = ?assertEqual({ok, ModeWas}, ct_proxy:mode(Proxy, Mode)),
     ok.
