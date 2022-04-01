@@ -34,11 +34,6 @@
     endpoint => endpoint()
 }.
 
--type activity() ::
-    stop
-    | ignore
-    | {remote, {inet:ip_address(), inet:port_number()}}.
-
 -spec start_link(endpoint()) -> {ok, proxy()}.
 
 -spec start_link(endpoint(), ranch_tcp:opts()) -> {ok, proxy()}.
@@ -94,7 +89,7 @@ stop(#{supervisor := SupPid}) ->
 
 %%
 
--spec proxy(pid(), binary()) -> activity().
+-spec proxy(pid(), binary()) -> ct_proxy_protocol:activity().
 proxy(DriverPid, Buffer) ->
     gen_server:call(DriverPid, {proxy, Buffer}).
 
