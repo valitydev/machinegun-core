@@ -67,40 +67,33 @@ groups() ->
 init_per_suite(C) ->
     % dbg:tracer(), dbg:p(all, c),
     % dbg:tpl({mg_core_events_sink_kafka, '_', '_'}, x),
-    AppSpecs = [
-        {ranch, []},
-        {machinegun_core, []}
-    ],
-    Apps = lists:flatten([
-        genlib_app:start_application_with(App, AppConf)
-     || {App, AppConf} <- AppSpecs
-    ]),
     {Events, _} = mg_core_events:generate_events_with_range(
         [{#{}, Body} || Body <- [1, 2, 3]],
         undefined
     ),
-    [{apps, Apps}, {events, Events} | C].
+    [{events, Events} | C].
 
 -spec end_per_suite(config()) -> ok.
-end_per_suite(C) ->
-    mg_core_ct_helper:stop_applications(?config(apps, C)).
+end_per_suite(_C) ->
+    ok.
 
 -spec init_per_testcase(test_name(), config()) -> config().
 init_per_testcase(Name, C) ->
+    Apps0 = genlib_app:start_application_with(ranch, []),
     {ok, Proxy = #{endpoint := {Host, Port}}} = ct_proxy:start_link({"kafka1", 9092}),
-    Apps =
-        genlib_app:start_application_with(brod, [
-            {clients, [
-                {?CLIENT, [
-                    {endpoints, [{Host, Port} | ?BROKERS]},
-                    {auto_start_producers, true}
-                ]}
+    Apps1 = genlib_app:start_application_with(brod, [
+        {clients, [
+            {?CLIENT, [
+                {endpoints, [{Host, Port}]},
+                {auto_start_producers, true}
             ]}
-        ]) ++ ?config(apps, C),
-    [{apps, Apps}, {proxy, Proxy}, {testcase, Name} | C].
+        ]}
+    ]) ++ Apps0,
+    [{apps, Apps1}, {proxy, Proxy}, {testcase, Name} | C].
 
 -spec end_per_testcase(test_name(), config()) -> ok.
 end_per_testcase(_Name, C) ->
+    _ = mg_core_ct_helper:stop_applications(?config(apps, C)),
     _ = (catch ct_proxy:stop(?config(proxy, C))),
     ok.
 
@@ -113,7 +106,7 @@ add_events_test(C) ->
     ok = change_proxy_mode(pass, stop, C),
     _ = ?assertException(
         throw,
-        {transient, {event_sink_unavailable, client_down}},
+        {transient, {event_sink_unavailable, {connect_failed, _}}},
         mg_core_events_sink_kafka:add_events(
             event_sink_options(),
             ?SOURCE_NS,
