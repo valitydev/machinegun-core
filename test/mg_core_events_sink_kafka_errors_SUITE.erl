@@ -81,14 +81,15 @@ end_per_suite(_C) ->
 init_per_testcase(Name, C) ->
     Apps0 = genlib_app:start_application_with(ranch, []),
     {ok, Proxy = #{endpoint := {Host, Port}}} = ct_proxy:start_link({"kafka1", 9092}),
-    Apps1 = genlib_app:start_application_with(brod, [
-        {clients, [
-            {?CLIENT, [
-                {endpoints, [{Host, Port}]},
-                {auto_start_producers, true}
+    Apps1 =
+        genlib_app:start_application_with(brod, [
+            {clients, [
+                {?CLIENT, [
+                    {endpoints, [{Host, Port}]},
+                    {auto_start_producers, true}
+                ]}
             ]}
-        ]}
-    ]) ++ Apps0,
+        ]) ++ Apps0,
     [{apps, Apps1}, {proxy, Proxy}, {testcase, Name} | C].
 
 -spec end_per_testcase(test_name(), config()) -> ok.
