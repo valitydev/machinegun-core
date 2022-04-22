@@ -178,9 +178,15 @@ is_connectivity_reason({_, {ehostdown, _ST}}) ->
     true;
 is_connectivity_reason({_, {ehostunreach, _ST}}) ->
     true;
+is_connectivity_reason({_, {enetunreach, _ST}}) ->
+    true;
+is_connectivity_reason({_, {nxdomain, _ST}}) ->
+    true;
 is_connectivity_reason({_, {{failed_to_upgrade_to_ssl, _SSLError}, _ST}}) ->
     true;
 is_connectivity_reason({_, {{_, closed}, _ST}}) ->
+    true;
+is_connectivity_reason({_, {{_, timeout}, _ST}}) ->
     true;
 is_connectivity_reason(_Reason) ->
     false.
