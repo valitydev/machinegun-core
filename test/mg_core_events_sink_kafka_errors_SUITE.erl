@@ -105,17 +105,21 @@ init_per_testcase(Name, C) when Name =:= add_events_connect_failed_test ->
     [{apps, Apps1}, {proxy, Proxy}, {testcase, Name} | C];
 init_per_testcase(Name, C) when Name =:= add_events_timeout_test ->
     Apps0 = genlib_app:start_application_with(ranch, []),
-    {ok, Proxy = #{endpoint := {Host, Port}}} = ct_proxy:start_link({"kafka1", 9092}),
+    {ok, LSock} = gen_tcp:listen(9092, [
+        binary,
+        {packet, 0},
+        {active, false}
+    ]),
     Apps1 =
         genlib_app:start_application_with(brod, [
             {clients, [
                 {?CLIENT, [
-                    {endpoints, [{Host, Port}]},
+                    {endpoints, [{"localhost", 9092}]},
                     {auto_start_producers, true}
                 ]}
             ]}
         ]) ++ Apps0,
-    [{apps, Apps1}, {proxy, Proxy}, {testcase, Name} | C];
+    [{apps, Apps1}, {socket, LSock}, {testcase, Name} | C];
 init_per_testcase(Name, C) when Name =:= add_events_timeout_2_test ->
     Apps0 = genlib_app:start_application_with(ranch, []),
     {ok, LSock} = gen_tcp:listen(9092, [
@@ -164,7 +168,7 @@ init_per_testcase(Name, C) when Name =:= add_events_enetunreach_test ->
         genlib_app:start_application_with(brod, [
             {clients, [
                 {?CLIENT, [
-                    {endpoints, [{"ff:::::1", 9092}]},
+                    {endpoints, [{"2fff:::::1", 9092}]},
                     {auto_start_producers, true}
                 ]}
             ]}
@@ -212,7 +216,6 @@ add_events_connect_failed_test(C) ->
 
 -spec add_events_timeout_test(config()) -> _.
 add_events_timeout_test(C) ->
-    ok = change_proxy_mode(pass, ignore, C),
     _ = ?assertException(
         throw,
         {transient, {event_sink_unavailable, {connect_failed, [{_, {{_, timeout}, _ST}}]}}},
