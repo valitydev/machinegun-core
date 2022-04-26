@@ -2,8 +2,8 @@ ARG OTP_VERSION
 
 FROM docker.io/library/erlang:${OTP_VERSION}
 
-RUN apt --yes update && \
-    apt --yes install iproute2
+RUN apt-get --yes update && \
+    apt-get --yes install iproute2
 
 ENV NETUNREACH_NETWORK="10.254.254.0/24"
 ENV NETUNREACH_ADDRESS="10.254.254.10"
