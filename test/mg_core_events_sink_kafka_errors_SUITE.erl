@@ -17,7 +17,6 @@
 -module(mg_core_events_sink_kafka_errors_SUITE).
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("common_test/include/ct.hrl").
--include_lib("kafka_protocol/include/kpro_public.hrl").
 
 %% tests descriptions
 -export([all/0]).
@@ -29,10 +28,12 @@
 
 %% tests
 -export([add_events_connect_failed_test/1]).
+-export([add_events_ssl_failed_test/1]).
 -export([add_events_timeout_test/1]).
 -export([add_events_second_timeout_test/1]).
 -export([add_events_econnrefused_test/1]).
 -export([add_events_ehostunreach_test/1]).
+-export([add_events_enetunreach_test/1]).
 -export([add_events_nxdomain_test/1]).
 
 %% Pulse
@@ -41,7 +42,6 @@
 -define(TOPIC, <<"test_event_sink">>).
 -define(SOURCE_NS, <<"source_ns">>).
 -define(SOURCE_ID, <<"source_id">>).
--define(BROKERS, [{"kafka2", 9092}, {"kafka3", 9092}]).
 -define(CLIENT, mg_core_kafka_client).
 
 %%
@@ -62,10 +62,12 @@ groups() ->
     [
         {main, [], [
             add_events_connect_failed_test,
+            add_events_ssl_failed_test,
             add_events_timeout_test,
             add_events_second_timeout_test,
             add_events_econnrefused_test,
             add_events_ehostunreach_test,
+            add_events_enetunreach_test,
             add_events_nxdomain_test
         ]}
     ].
@@ -117,6 +119,32 @@ add_events_connect_failed_test(C) ->
         _ = ?assertException(
             throw,
             {transient, {event_sink_unavailable, {connect_failed, [{_, {{_, closed}, _ST}}]}}},
+            add_events(C)
+        )
+    after
+        _ = mg_core_ct_helper:stop_applications(Apps),
+        _ = (catch ct_proxy:stop(Proxy))
+    end.
+
+-spec add_events_ssl_failed_test(config()) -> _.
+add_events_ssl_failed_test(C) ->
+    {ok, Proxy = #{endpoint := {Host, Port}}} = ct_proxy:start_link({"kafka1", 9092}),
+    Apps = genlib_app:start_application_with(brod, [
+        {clients, [
+            {?CLIENT, [
+                {endpoints, [{Host, Port}]},
+                {ssl, true},
+                {auto_start_producers, true}
+            ]}
+        ]}
+    ]),
+    try
+        ok = change_proxy_mode(pass, ignore, Proxy, C),
+        _ = ?assertException(
+            throw,
+            {transient,
+                {event_sink_unavailable,
+                    {connect_failed, [{_, {{failed_to_upgrade_to_ssl, _}, _ST}}]}}},
             mg_core_events_sink_kafka:add_events(
                 event_sink_options(),
                 ?SOURCE_NS,
@@ -151,14 +179,7 @@ add_events_timeout_test(C) ->
         _ = ?assertException(
             throw,
             {transient, {event_sink_unavailable, {connect_failed, [{_, {{_, timeout}, _ST}}]}}},
-            mg_core_events_sink_kafka:add_events(
-                event_sink_options(),
-                ?SOURCE_NS,
-                ?SOURCE_ID,
-                ?config(events, C),
-                null,
-                mg_core_deadline:default()
-            )
+            add_events(C)
         )
     after
         _ = mg_core_ct_helper:stop_applications(Apps),
@@ -179,14 +200,7 @@ add_events_second_timeout_test(C) ->
         _ = ?assertException(
             throw,
             {transient, {event_sink_unavailable, {connect_failed, [{_, {timeout, _ST}}]}}},
-            mg_core_events_sink_kafka:add_events(
-                event_sink_options(),
-                ?SOURCE_NS,
-                ?SOURCE_ID,
-                ?config(events, C),
-                null,
-                mg_core_deadline:default()
-            )
+            add_events(C)
         )
     after
         _ = mg_core_ct_helper:stop_applications(Apps)
@@ -206,14 +220,7 @@ add_events_econnrefused_test(C) ->
         _ = ?assertException(
             throw,
             {transient, {event_sink_unavailable, {connect_failed, [{_, {econnrefused, _ST}}]}}},
-            mg_core_events_sink_kafka:add_events(
-                event_sink_options(),
-                ?SOURCE_NS,
-                ?SOURCE_ID,
-                ?config(events, C),
-                null,
-                mg_core_deadline:default()
-            )
+            add_events(C)
         )
     after
         _ = mg_core_ct_helper:stop_applications(Apps)
@@ -221,7 +228,7 @@ add_events_econnrefused_test(C) ->
 
 -spec add_events_ehostunreach_test(config()) -> _.
 add_events_ehostunreach_test(C) ->
-    Addr = addr_to_string(unreachable_ip(get_ip_addr())),
+    Addr = unreachable_ip(get_ip_addr()),
     Apps =
         genlib_app:start_application_with(brod, [
             {clients, [
@@ -235,6 +242,27 @@ add_events_ehostunreach_test(C) ->
         _ = ?assertException(
             throw,
             {transient, {event_sink_unavailable, {connect_failed, [{_, {ehostunreach, _ST}}]}}},
+            add_events(C)
+        )
+    after
+        _ = mg_core_ct_helper:stop_applications(Apps)
+    end.
+
+-spec add_events_enetunreach_test(config()) -> _.
+add_events_enetunreach_test(C) ->
+    Apps =
+        genlib_app:start_application_with(brod, [
+            {clients, [
+                {?CLIENT, [
+                    {endpoints, [{os:getenv("NETUNREACH_ADDRESS"), 9092}]},
+                    {auto_start_producers, true}
+                ]}
+            ]}
+        ]),
+    try
+        _ = ?assertException(
+            throw,
+            {transient, {event_sink_unavailable, {connect_failed, [{_, {enetunreach, _ST}}]}}},
             mg_core_events_sink_kafka:add_events(
                 event_sink_options(),
                 ?SOURCE_NS,
@@ -262,14 +290,7 @@ add_events_nxdomain_test(C) ->
         _ = ?assertException(
             throw,
             {transient, {event_sink_unavailable, {connect_failed, [{_, {nxdomain, _ST}}]}}},
-            mg_core_events_sink_kafka:add_events(
-                event_sink_options(),
-                ?SOURCE_NS,
-                ?SOURCE_ID,
-                ?config(events, C),
-                null,
-                mg_core_deadline:default()
-            )
+            add_events(C)
         )
     after
         _ = mg_core_ct_helper:stop_applications(Apps)
@@ -301,9 +322,16 @@ change_proxy_mode(ModeWas, Mode, Proxy, C) ->
     _ = ?assertEqual({ok, ModeWas}, ct_proxy:mode(Proxy, Mode)),
     ok.
 
--spec addr_to_string(tuple()) -> string().
-addr_to_string(Addr) ->
-    io_lib:format("~B.~B.~B.~B", tuple_to_list(Addr)).
+-spec add_events(config()) -> ok.
+add_events(C) ->
+    mg_core_events_sink_kafka:add_events(
+        event_sink_options(),
+        ?SOURCE_NS,
+        ?SOURCE_ID,
+        ?config(events, C),
+        null,
+        mg_core_deadline:default()
+    ).
 
 -spec unreachable_ip(tuple()) -> tuple().
 unreachable_ip(Addr) ->
@@ -315,16 +343,16 @@ get_ip_addr() ->
     genlib_list:foldl_while(
         fun({_Name, Opts}, Acc) ->
             {flags, Flags} = lists:keyfind(flags, 1, Opts),
-            Addr = lists:keyfind(addr, 1, Opts),
+            Addr = get_opts_addr(Opts),
             Check = {
                 lists:member(loopback, Flags),
                 lists:member(up, Flags),
                 lists:member(running, Flags),
-                check_ip_address(Addr)
+                erlang:tuple_size(Addr) =:= 4
             },
             case Check of
-                {false, true, true, {ok, CheckedAddr}} ->
-                    {halt, CheckedAddr};
+                {false, true, true, true} ->
+                    {halt, Addr};
                 _ ->
                     {cont, Acc}
             end
@@ -333,8 +361,11 @@ get_ip_addr() ->
         Interfaces
     ).
 
--spec check_ip_address(tuple()) -> {ok, tuple()} | false.
-check_ip_address({addr, Addr}) when size(Addr) == 4 ->
-    {ok, Addr};
-check_ip_address(_) ->
-    false.
+-spec get_opts_addr(list()) -> tuple().
+get_opts_addr(Opts) ->
+    case lists:keyfind(addr, 1, Opts) of
+        {addr, Addr} ->
+            Addr;
+        false ->
+            {}
+    end.
