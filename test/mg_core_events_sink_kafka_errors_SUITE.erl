@@ -30,7 +30,7 @@
 %% tests
 -export([add_events_connect_failed_test/1]).
 -export([add_events_timeout_test/1]).
--export([add_events_timeout_2_test/1]).
+-export([add_events_second_timeout_test/1]).
 -export([add_events_econnrefused_test/1]).
 -export([add_events_ehostunreach_test/1]).
 -export([add_events_nxdomain_test/1]).
@@ -63,7 +63,7 @@ groups() ->
         {main, [], [
             add_events_connect_failed_test,
             add_events_timeout_test,
-            add_events_timeout_2_test,
+            add_events_second_timeout_test,
             add_events_econnrefused_test,
             add_events_ehostunreach_test,
             add_events_nxdomain_test
@@ -165,8 +165,8 @@ add_events_timeout_test(C) ->
         _ = (catch gen_tcp:close(LSock))
     end.
 
--spec add_events_timeout_2_test(config()) -> _.
-add_events_timeout_2_test(C) ->
+-spec add_events_second_timeout_test(config()) -> _.
+add_events_second_timeout_test(C) ->
     Apps = genlib_app:start_application_with(brod, [
         {clients, [
             {?CLIENT, [
