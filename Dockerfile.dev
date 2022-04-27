@@ -9,9 +9,9 @@ RUN apt-get --yes update && \
 ENV NETUNREACH_NETWORK="10.254.254.0/24"
 ENV NETUNREACH_ADDRESS="10.254.254.10"
 
-RUN echo "#!/bin/sh" >> /entrypoint.sh && \
+RUN echo '#!/bin/sh' >> /entrypoint.sh && \
     echo "ip route add throw ${NETUNREACH_NETWORK}" >> /entrypoint.sh && \
-    echo "exec \"$@\"" >> /entrypoint.sh && \
+    echo 'exec "$@"' >> /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
