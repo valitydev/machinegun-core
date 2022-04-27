@@ -3,14 +3,15 @@ ARG OTP_VERSION
 FROM docker.io/library/erlang:${OTP_VERSION}
 
 RUN apt-get --yes update && \
-    apt-get --yes install iproute2=5.10.0-4
+    apt-get --yes --no-install-recommends install iproute2=5.10.0-4 && \
+    apt-get clean
 
 ENV NETUNREACH_NETWORK="10.254.254.0/24"
 ENV NETUNREACH_ADDRESS="10.254.254.10"
 
-RUN echo '#!/bin/sh' >> /entrypoint.sh && \
-    echo 'ip route add throw ${NETUNREACH_NETWORK}' >> /entrypoint.sh && \
-    echo 'exec "$@"' >> /entrypoint.sh && \
+RUN echo "#!/bin/sh" >> /entrypoint.sh && \
+    echo "ip route add throw ${NETUNREACH_NETWORK}" >> /entrypoint.sh && \
+    echo "exec \"$@\"" >> /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
