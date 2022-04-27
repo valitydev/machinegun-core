@@ -172,10 +172,6 @@ is_connectivity_reason({_, {econnaborted, _ST}}) ->
     true;
 is_connectivity_reason({_, {econnrefused, _ST}}) ->
     true;
-is_connectivity_reason({_, {econnreset, _ST}}) ->
-    true;
-is_connectivity_reason({_, {ehostdown, _ST}}) ->
-    true;
 is_connectivity_reason({_, {ehostunreach, _ST}}) ->
     true;
 is_connectivity_reason({_, {enetunreach, _ST}}) ->

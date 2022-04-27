@@ -263,14 +263,7 @@ add_events_enetunreach_test(C) ->
         _ = ?assertException(
             throw,
             {transient, {event_sink_unavailable, {connect_failed, [{_, {enetunreach, _ST}}]}}},
-            mg_core_events_sink_kafka:add_events(
-                event_sink_options(),
-                ?SOURCE_NS,
-                ?SOURCE_ID,
-                ?config(events, C),
-                null,
-                mg_core_deadline:default()
-            )
+            add_events(C)
         )
     after
         _ = mg_core_ct_helper:stop_applications(Apps)
