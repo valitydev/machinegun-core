@@ -168,8 +168,6 @@ handle_produce_error(Reason) ->
     boolean().
 is_connectivity_reason({_, {timeout, _ST}}) ->
     true;
-is_connectivity_reason({_, {econnaborted, _ST}}) ->
-    true;
 is_connectivity_reason({_, {econnrefused, _ST}}) ->
     true;
 is_connectivity_reason({_, {ehostunreach, _ST}}) ->
