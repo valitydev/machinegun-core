@@ -447,18 +447,19 @@ riak_pool_misbehaving_connection_test(_C) ->
 
     _ = genlib_pmap:map(
         fun(RequestID) ->
+            Key = genlib:to_binary(RequestID),
             case RequestID of
                 N when (N rem WorkersCount) == (N div WorkersCount) ->
                     % Ensure that request fails occasionally...
                     ?assertThrow(
-                        {logic, _},
-                        mg_core_storage:get(Storage, <<>>)
+                        {transient, {storage_unavailable, _}},
+                        mg_core_storage:put(Storage, Key, <<"NOTACONTEXT">>, <<>>, [])
                     );
                 _ ->
                     % ...And it will not affect any concurrently running requests.
                     ?assertEqual(
                         undefined,
-                        mg_core_storage:get(Storage, genlib:to_binary(RequestID))
+                        mg_core_storage:get(Storage, Key)
                     )
             end
         end,
