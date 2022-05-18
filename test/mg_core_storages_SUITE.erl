@@ -368,9 +368,7 @@ storage_options(riak, Namespace) ->
             idle_timeout => 1000,
             cull_interval => 1000,
             auto_grow_threshold => 5,
-            queue_max => 100,
-            metrics_mod => pooler_no_metrics,
-            metrics_api => folsom
+            queue_max => 100
         }
     }};
 storage_options(memory, _) ->
