@@ -42,6 +42,7 @@
 
 -export([riak_pool_stable_test/1]).
 -export([riak_pool_overload_test/1]).
+-export([riak_pool_misbehaving_connection_test/1]).
 
 -export([handle_beat/2]).
 
@@ -67,7 +68,8 @@ groups() ->
             tests() ++
                 [
                     riak_pool_stable_test,
-                    riak_pool_overload_test
+                    riak_pool_overload_test,
+                    riak_pool_misbehaving_connection_test
                 ]}
     ].
 
@@ -409,8 +411,6 @@ riak_pool_overload_test(_C) ->
         #{
             init_count => 1,
             max_count => 4,
-            idle_timeout => 1000,
-            cull_interval => 1000,
             queue_max => RequestCount div 4
         }
     ),
@@ -425,6 +425,45 @@ riak_pool_overload_test(_C) ->
             end,
             lists:seq(1, RequestCount)
         )
+    ),
+
+    ok = stop_storage(Pid).
+
+-spec riak_pool_misbehaving_connection_test(_C) -> ok.
+riak_pool_misbehaving_connection_test(_C) ->
+    Namespace = <<"riak_pool_overload_test">>,
+    WorkersCount = 4,
+    RequestCount = 4,
+    Options = riak_options(
+        Namespace,
+        #{
+            init_count => 1,
+            max_count => WorkersCount div 2,
+            queue_max => WorkersCount * 2
+        }
+    ),
+    Storage = {mg_core_storage_riak, Options},
+    Pid = start_storage(Storage),
+
+    _ = genlib_pmap:map(
+        fun(RequestID) ->
+            case RequestID of
+                N when (N rem WorkersCount) == (N div WorkersCount) ->
+                    % Ensure that request fails occasionally...
+                    ?assertExit(
+                        _,
+                        mg_core_storage:get(Storage, invalid_key)
+                    );
+                _ ->
+                    % ...And it will not affect any concurrently running requests.
+                    ?assertEqual(
+                        undefined,
+                        mg_core_storage:get(Storage, genlib:to_binary(RequestID))
+                    )
+            end
+        end,
+        lists:seq(1, RequestCount * WorkersCount),
+        #{proc_limit => WorkersCount}
     ),
 
     ok = stop_storage(Pid).
