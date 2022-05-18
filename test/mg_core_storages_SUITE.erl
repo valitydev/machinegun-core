@@ -450,9 +450,9 @@ riak_pool_misbehaving_connection_test(_C) ->
             case RequestID of
                 N when (N rem WorkersCount) == (N div WorkersCount) ->
                     % Ensure that request fails occasionally...
-                    ?assertExit(
-                        _,
-                        mg_core_storage:get(Storage, invalid_key)
+                    ?assertThrow(
+                        {logic, _},
+                        mg_core_storage:get(Storage, <<>>)
                     );
                 _ ->
                     % ...And it will not affect any concurrently running requests.
