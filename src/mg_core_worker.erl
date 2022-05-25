@@ -49,7 +49,8 @@
     worker => mg_core_utils:mod_opts(),
     registry => mg_core_procreg:options(),
     hibernate_timeout => pos_integer(),
-    unload_timeout => pos_integer()
+    unload_timeout => pos_integer(),
+    shutdown_timeout => timeout()
 }.
 % в OTP он не описан, а нужно бы :(
 -type call_context() :: _.
@@ -66,7 +67,7 @@ child_spec(ChildID, Options) ->
         id => ChildID,
         start => {?MODULE, start_link, [Options]},
         restart => temporary,
-        shutdown => brutal_kill
+        shutdown => shutdown_timeout(Options)
     }.
 
 -spec start_link(options(), mg_core:ns(), mg_core:id(), _ReqCtx) -> mg_core_utils:gen_start_ret().
@@ -254,6 +255,12 @@ hibernate_timeout(#{hibernate_timeout := Timeout}) ->
 
 -spec unload_timeout(state()) -> timeout().
 unload_timeout(#{unload_timeout := Timeout}) ->
+    Timeout.
+
+-spec shutdown_timeout(options()) -> brutal_kill | timeout().
+shutdown_timeout(#{shutdown_timeout := 0})->
+    brutal_kill;
+shutdown_timeout(#{shutdown_timeout := Timeout})->
     Timeout.
 
 -spec schedule_unload_timer(state()) -> state().
