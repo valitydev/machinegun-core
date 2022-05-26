@@ -92,7 +92,6 @@ groups() ->
 %%
 -spec init_per_suite(config()) -> config().
 init_per_suite(C) ->
-    _ = observer:start(),
     % dbg:tracer(), dbg:p(all, c),
     % dbg:tpl({mg_core_workers_manager, '_', '_'}, x),
     % dbg:tpl({mg_core_workers, '_', '_'}, x),
@@ -436,7 +435,9 @@ workers_options(UnloadTimeout, WorkerParams, C) ->
 workers_options(UnloadTimeout, ShutdownTimeout, WorkerParams, C) ->
     workers_options(UnloadTimeout, 5000, ShutdownTimeout, WorkerParams, C).
 
--spec workers_options(non_neg_integer(), non_neg_integer(), non_neg_integer(), worker_params(), config()) ->
+-spec workers_options(
+    non_neg_integer(), non_neg_integer(), non_neg_integer(), worker_params(), config()
+) ->
     mg_core_workers_manager:options().
 workers_options(UnloadTimeout, MsgQueueLen, ShutdownTimeout, WorkerParams, C) ->
     #{
