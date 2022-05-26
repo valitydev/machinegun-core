@@ -157,6 +157,7 @@ list(Procreg, NS) ->
 
 -spec init(_) -> mg_core_utils:gen_server_init_ret(state()).
 init({ID, Options = #{worker := WorkerModOpts}, ReqCtx}) ->
+    _ = process_flag(trap_exit, true),
     HibernateTimeout = maps:get(hibernate_timeout, Options, 5 * 1000),
     UnloadTimeout = maps:get(unload_timeout, Options, 60 * 1000),
     {Mod, Args} = mg_core_utils:separate_mod_opts(WorkerModOpts),
@@ -258,10 +259,10 @@ unload_timeout(#{unload_timeout := Timeout}) ->
     Timeout.
 
 -spec shutdown_timeout(options()) -> brutal_kill | timeout().
-shutdown_timeout(#{shutdown_timeout := 0})->
-    brutal_kill;
-shutdown_timeout(#{shutdown_timeout := Timeout})->
-    Timeout.
+shutdown_timeout(#{shutdown_timeout := Timeout}) when is_integer(Timeout) andalso Timeout > 0 ->
+    Timeout;
+shutdown_timeout(_) ->
+    brutal_kill.
 
 -spec schedule_unload_timer(state()) -> state().
 schedule_unload_timer(State = #{unload_tref := UnloadTRef}) ->
