@@ -239,7 +239,7 @@ graceful_shutdown_test(C) ->
     heyhey = mg_core_workers_manager:call(
         Options, <<"42">>, heyhey, ?REQ_CTX, mg_core_deadline:default()
     ),
-    _ = timer:sleep(ShutdownTimeout - CallLag),
+    _ = timer:sleep(?UNLOAD_TIMEOUT div 2),
     false = mg_core_workers_manager:is_alive(Options, <<"42">>).
 
 -spec graceful_shutdown_oot_test(config()) -> _.

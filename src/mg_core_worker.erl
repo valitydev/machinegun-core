@@ -60,6 +60,7 @@
 -type pulse() :: mg_core_pulse:handler().
 
 -define(WRAP_ID(NS, ID), {?MODULE, {NS, ID}}).
+-define(DEFAULT_SHUTDOWN, brutal_kill).
 
 -spec child_spec(atom(), options()) -> supervisor:child_spec().
 child_spec(ChildID, Options) ->
@@ -67,7 +68,7 @@ child_spec(ChildID, Options) ->
         id => ChildID,
         start => {?MODULE, start_link, [Options]},
         restart => temporary,
-        shutdown => shutdown_timeout(Options)
+        shutdown => shutdown_timeout(Options, ?DEFAULT_SHUTDOWN)
     }.
 
 -spec start_link(options(), mg_core:ns(), mg_core:id(), _ReqCtx) -> mg_core_utils:gen_start_ret().
@@ -258,11 +259,28 @@ hibernate_timeout(#{hibernate_timeout := Timeout}) ->
 unload_timeout(#{unload_timeout := Timeout}) ->
     Timeout.
 
--spec shutdown_timeout(options()) -> brutal_kill | timeout().
-shutdown_timeout(#{shutdown_timeout := Timeout}) when is_integer(Timeout) andalso Timeout > 0 ->
-    Timeout;
-shutdown_timeout(_) ->
-    brutal_kill.
+-spec shutdown_timeout(options(), supervisor:shutdown()) -> supervisor:shutdown() | no_return().
+shutdown_timeout(#{shutdown_timeout := Timeout}, _Default) ->
+    case is_timeout(Timeout) of
+        true -> timeout_to_shutdown(Timeout);
+        false -> error({shutdown_timeout, {invalid, Timeout}})
+    end;
+shutdown_timeout(_, Default) ->
+    Default.
+
+-spec is_timeout(atom() | integer()) -> boolean().
+is_timeout(infinity) ->
+    true;
+is_timeout(Timeout) when is_integer(Timeout) andalso Timeout >= 0 ->
+    true;
+is_timeout(_) ->
+    false.
+
+-spec timeout_to_shutdown(timeout()) -> supervisor:shutdown() | no_return().
+timeout_to_shutdown(0) ->
+    brutal_kill;
+timeout_to_shutdown(Timeout) ->
+    Timeout.
 
 -spec schedule_unload_timer(state()) -> state().
 schedule_unload_timer(State = #{unload_tref := UnloadTRef}) ->
