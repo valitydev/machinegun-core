@@ -259,7 +259,9 @@ hibernate_timeout(#{hibernate_timeout := Timeout}) ->
 unload_timeout(#{unload_timeout := Timeout}) ->
     Timeout.
 
--spec shutdown_timeout(options(), supervisor:shutdown()) -> supervisor:shutdown() | no_return().
+-type supervisor_shutdown() :: brutal_kill | timeout().
+
+-spec shutdown_timeout(options(), supervisor_shutdown()) -> supervisor_shutdown() | no_return().
 shutdown_timeout(#{shutdown_timeout := Timeout}, _Default) ->
     case is_timeout(Timeout) of
         true -> timeout_to_shutdown(Timeout);
@@ -276,7 +278,7 @@ is_timeout(Timeout) when is_integer(Timeout) andalso Timeout >= 0 ->
 is_timeout(_) ->
     false.
 
--spec timeout_to_shutdown(timeout()) -> supervisor:shutdown() | no_return().
+-spec timeout_to_shutdown(timeout()) -> supervisor_shutdown() | no_return().
 timeout_to_shutdown(0) ->
     brutal_kill;
 timeout_to_shutdown(Timeout) ->
