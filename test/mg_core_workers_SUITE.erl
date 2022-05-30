@@ -261,11 +261,11 @@ graceful_shutdown_infinite_test(C) ->
 -spec graceful_shutdown_bad_test(config()) -> _.
 graceful_shutdown_bad_test(C) ->
     ShutdownTimeout0 = -10,
-    Options = workers_options(?UNLOAD_TIMEOUT, ShutdownTimeout0, #{}, C),
-    ?assertError({shutdown_timeout, {invalid, ShutdownTimeout0}}, start_workers(Options)),
+    Options0 = workers_options(?UNLOAD_TIMEOUT, ShutdownTimeout0, #{}, C),
+    ?assertError({shutdown_timeout, {invalid, ShutdownTimeout0}}, start_workers(Options0)),
     ShutdownTimeout1 = blah,
-    Options = workers_options(?UNLOAD_TIMEOUT, ShutdownTimeout1, #{}, C),
-    ?assertError({shutdown_timeout, {invalid, ShutdownTimeout1}}, start_workers(Options)).
+    Options1 = workers_options(?UNLOAD_TIMEOUT, ShutdownTimeout1, #{}, C),
+    ?assertError({shutdown_timeout, {invalid, ShutdownTimeout1}}, start_workers(Options1)).
 
 -spec graceful_shutdown_oot_test(config()) -> _.
 graceful_shutdown_oot_test(C) ->
