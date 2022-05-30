@@ -26,6 +26,7 @@
 %%%
 -module(mg_core_workers_SUITE).
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 -include("ct_helper.hrl").
 
 %% tests descriptions
@@ -47,6 +48,8 @@
 -export([stress_test/1]).
 -export([manager_contention_test/1]).
 -export([graceful_shutdown_test/1]).
+-export([graceful_shutdown_infinite_test/1]).
+-export([graceful_shutdown_bad_test/1]).
 -export([graceful_shutdown_oot_test/1]).
 
 %% mg_core_worker
@@ -83,6 +86,8 @@ groups() ->
             stress_test,
             manager_contention_test,
             graceful_shutdown_test,
+            graceful_shutdown_infinite_test,
+            graceful_shutdown_bad_test,
             graceful_shutdown_oot_test
         ]}
     ].
@@ -241,6 +246,26 @@ graceful_shutdown_test(C) ->
     ),
     _ = timer:sleep(?UNLOAD_TIMEOUT div 2),
     false = mg_core_workers_manager:is_alive(Options, <<"42">>).
+
+-spec graceful_shutdown_infinite_test(config()) -> _.
+graceful_shutdown_infinite_test(C) ->
+    ShutdownTimeout = infinity,
+    CallLag = 2000,
+    Options = workers_options(?UNLOAD_TIMEOUT, ShutdownTimeout, #{call_lag => CallLag}, C),
+    Pid = start_workers(Options),
+    ok = stop_workers_after(Pid, 100),
+    heyhey = mg_core_workers_manager:call(
+        Options, <<"42">>, heyhey, ?REQ_CTX, mg_core_deadline:default()
+    ).
+
+-spec graceful_shutdown_bad_test(config()) -> _.
+graceful_shutdown_bad_test(C) ->
+    ShutdownTimeout0 = -10,
+    Options = workers_options(?UNLOAD_TIMEOUT, ShutdownTimeout0, #{}, C),
+    ?assertError({shutdown_timeout, {invalid, ShutdownTimeout0}}, start_workers(Options)),
+    ShutdownTimeout1 = blah,
+    Options = workers_options(?UNLOAD_TIMEOUT, ShutdownTimeout1, #{}, C),
+    ?assertError({shutdown_timeout, {invalid, ShutdownTimeout1}}, start_workers(Options)).
 
 -spec graceful_shutdown_oot_test(config()) -> _.
 graceful_shutdown_oot_test(C) ->
@@ -430,13 +455,13 @@ stress_test_start_process(Options, Job, N, State) ->
 workers_options(UnloadTimeout, WorkerParams, C) ->
     workers_options(UnloadTimeout, 5000, 0, WorkerParams, C).
 
--spec workers_options(non_neg_integer(), non_neg_integer(), worker_params(), config()) ->
+-spec workers_options(non_neg_integer(), atom() | integer(), worker_params(), config()) ->
     mg_core_workers_manager:options().
 workers_options(UnloadTimeout, ShutdownTimeout, WorkerParams, C) ->
     workers_options(UnloadTimeout, 5000, ShutdownTimeout, WorkerParams, C).
 
 -spec workers_options(
-    non_neg_integer(), non_neg_integer(), non_neg_integer(), worker_params(), config()
+    non_neg_integer(), non_neg_integer(), atom() | integer(), worker_params(), config()
 ) ->
     mg_core_workers_manager:options().
 workers_options(UnloadTimeout, MsgQueueLen, ShutdownTimeout, WorkerParams, C) ->

@@ -50,7 +50,8 @@
     registry => mg_core_procreg:options(),
     hibernate_timeout => pos_integer(),
     unload_timeout => pos_integer(),
-    shutdown_timeout => timeout()
+    %??
+    shutdown_timeout => atom() | integer()
 }.
 % в OTP он не описан, а нужно бы :(
 -type call_context() :: _.
