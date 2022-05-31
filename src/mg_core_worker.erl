@@ -50,8 +50,7 @@
     registry => mg_core_procreg:options(),
     hibernate_timeout => pos_integer(),
     unload_timeout => pos_integer(),
-    %??
-    shutdown_timeout => atom() | integer()
+    shutdown_timeout => any()
 }.
 % в OTP он не описан, а нужно бы :(
 -type call_context() :: _.
@@ -260,6 +259,7 @@ hibernate_timeout(#{hibernate_timeout := Timeout}) ->
 unload_timeout(#{unload_timeout := Timeout}) ->
     Timeout.
 
+%% It's 2022 and half the useful types in OTP are still not exported.
 -type supervisor_shutdown() :: brutal_kill | timeout().
 
 -spec shutdown_timeout(options(), supervisor_shutdown()) -> supervisor_shutdown() | no_return().
@@ -271,7 +271,7 @@ shutdown_timeout(#{shutdown_timeout := Timeout}, _Default) ->
 shutdown_timeout(_, Default) ->
     Default.
 
--spec is_timeout(atom() | integer()) -> boolean().
+-spec is_timeout(any()) -> boolean().
 is_timeout(infinity) ->
     true;
 is_timeout(Timeout) when is_integer(Timeout) andalso Timeout >= 0 ->
@@ -279,7 +279,7 @@ is_timeout(Timeout) when is_integer(Timeout) andalso Timeout >= 0 ->
 is_timeout(_) ->
     false.
 
--spec timeout_to_shutdown(timeout()) -> supervisor_shutdown() | no_return().
+-spec timeout_to_shutdown(timeout()) -> supervisor_shutdown().
 timeout_to_shutdown(0) ->
     brutal_kill;
 timeout_to_shutdown(Timeout) ->
