@@ -50,7 +50,7 @@
     registry => mg_core_procreg:options(),
     hibernate_timeout => pos_integer(),
     unload_timeout => pos_integer(),
-    shutdown_timeout => any()
+    shutdown_timeout => timeout()
 }.
 % в OTP он не описан, а нужно бы :(
 -type call_context() :: _.
@@ -264,25 +264,16 @@ unload_timeout(#{unload_timeout := Timeout}) ->
 
 -spec shutdown_timeout(options(), supervisor_shutdown()) -> supervisor_shutdown() | no_return().
 shutdown_timeout(#{shutdown_timeout := Timeout}, _Default) ->
-    case is_timeout(Timeout) of
-        true -> timeout_to_shutdown(Timeout);
-        false -> error({shutdown_timeout, {invalid, Timeout}})
-    end;
+    timeout_to_shutdown(Timeout);
 shutdown_timeout(_, Default) ->
     Default.
-
--spec is_timeout(any()) -> boolean().
-is_timeout(infinity) ->
-    true;
-is_timeout(Timeout) when is_integer(Timeout) andalso Timeout >= 0 ->
-    true;
-is_timeout(_) ->
-    false.
 
 -spec timeout_to_shutdown(timeout()) -> supervisor_shutdown().
 timeout_to_shutdown(0) ->
     brutal_kill;
-timeout_to_shutdown(Timeout) ->
+timeout_to_shutdown(infinity) ->
+    infinity;
+timeout_to_shutdown(Timeout) when is_integer(Timeout) andalso Timeout >= 0 ->
     Timeout.
 
 -spec schedule_unload_timer(state()) -> state().
