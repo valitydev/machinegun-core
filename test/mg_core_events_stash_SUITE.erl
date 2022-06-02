@@ -237,18 +237,6 @@ events_machine_options(Options) ->
     #{
         namespace => NS,
         processor => maps:get(processor, Options),
-        tagging => #{
-            namespace => <<NS/binary, "_tags">>,
-            storage =>
-                {mg_core_storage_memory, #{
-                    existing_storage_name => ?MODULE
-                }},
-            worker => #{
-                registry => mg_core_procreg_gproc
-            },
-            pulse => ?MODULE,
-            retries => #{}
-        },
         machines => #{
             namespace => NS,
             storage =>

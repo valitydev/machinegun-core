@@ -193,15 +193,6 @@ events_machine_options(ProcessorOptions, NS) ->
         event_stash_size => 0,
         namespace => NS,
         processor => {?MODULE, ProcessorOptions},
-        tagging => #{
-            namespace => <<NS/binary, "_tags">>,
-            storage => Storage,
-            worker => #{
-                registry => mg_core_procreg_gproc
-            },
-            pulse => Pulse,
-            retries => #{}
-        },
         machines => #{
             namespace => NS,
             storage => mg_core_ct_helper:build_storage(NS, Storage),

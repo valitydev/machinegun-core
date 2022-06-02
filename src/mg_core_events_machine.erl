@@ -30,7 +30,6 @@
 -export_type([storage_options/0]).
 -export_type([ref/0]).
 -export_type([machine/0]).
--export_type([tag_action/0]).
 -export_type([timer_action/0]).
 -export_type([complex_action/0]).
 -export_type([state_change/0]).
@@ -69,7 +68,6 @@
 -optional_callbacks([processor_child_spec/1]).
 
 -type id() :: mg_core:id().
--type tag() :: mg_core_machine_tags:tag().
 -type event() :: mg_core_events:event().
 -type events_range() :: mg_core_events:events_range().
 
@@ -107,10 +105,8 @@
 %% actions
 -type complex_action() :: #{
     timer => timer_action() | undefined,
-    tag => tag_action() | undefined,
     remove => remove | undefined
 }.
--type tag_action() :: tag().
 -type timer_action() ::
     {set_timer, timer(), mg_core_events:history_range() | undefined,
         Timeout :: pos_integer() | undefined}
@@ -119,12 +115,11 @@
 -type timeout_() :: non_neg_integer().
 -type deadline() :: mg_core_deadline:deadline().
 
--type ref() :: {id, id()} | {tag, tag()}.
+-type ref() :: {id, id()}.
 -type options() :: #{
     namespace => mg_core:ns(),
     events_storage => storage_options(),
     processor => mg_core_utils:mod_opts(),
-    tagging => mg_core_machine_tags:options(),
     machines => mg_core_machine:options(),
     retries => #{_Subject => mg_core_retry:policy()},
     pulse => mg_core_pulse:handler(),
@@ -150,7 +145,6 @@ start_link(Options) ->
         #{strategy => one_for_all},
         mg_core_utils:lists_compact([
             mg_core_events_storage:child_spec(Options),
-            mg_core_machine_tags:child_spec(tags_machine_options(Options), tags),
             mg_core_machine:child_spec(machine_options(Options), automaton)
         ])
     ).
@@ -226,12 +220,7 @@ remove(Options, ID, ReqCtx, Deadline) ->
 
 -spec ref2id(options(), ref()) -> id() | no_return().
 ref2id(_, {id, ID}) ->
-    ID;
-ref2id(Options, {tag, Tag}) ->
-    case mg_core_machine_tags:resolve(tags_machine_options(Options), Tag) of
-        undefined -> throw({logic, machine_not_found});
-        ID -> ID
-    end.
+    ID.
 
 %%
 %% mg_core_processor handler
@@ -245,7 +234,6 @@ ref2id(Options, {tag, Tag}) ->
 }.
 -type delayed_actions() ::
     #{
-        add_tag => mg_core_machine_tags:tag() | undefined,
         remove => remove | undefined,
         new_events_range => events_range()
     }
@@ -343,7 +331,6 @@ process_machine_(
     %
     % действия должны обязательно произойти в конце концов (таймаута нет), либо машина должна упасть
     ok = update_event_sinks(Options, ID, ReqCtx, Deadline, State1),
-    ok = add_tag(Options, ID, ReqCtx, Deadline, maps:get(add_tag, DelayedActions)),
     ReplyAction =
         case PCtx of
             #{state := Reply} ->
@@ -385,30 +372,6 @@ process_machine_std(Options, ReqCtx, Deadline, Subject, Args, Machine, State) ->
             call -> process_call(Options, ReqCtx, Deadline, Args, Machine, State)
         end,
     {noreply, {continue, Reply}, NewState}.
-
--spec add_tag(options(), id(), request_context(), deadline(), undefined | tag()) -> ok.
-add_tag(_, _, _, _, undefined) ->
-    ok;
-add_tag(Options, ID, ReqCtx, Deadline, Tag) ->
-    case mg_core_machine_tags:add(tags_machine_options(Options), Tag, ID, ReqCtx, Deadline) of
-        ok ->
-            ok;
-        {already_exists, OtherMachineID} ->
-            case mg_core_machine:is_exist(machine_options(Options), OtherMachineID) of
-                true ->
-                    % была договорённость, что при двойном тэгировании роняем машину
-                    exit({double_tagging, OtherMachineID});
-                false ->
-                    % это забытый после удаления тэг
-                    ok = mg_core_machine_tags:replace(
-                        tags_machine_options(Options),
-                        Tag,
-                        ID,
-                        ReqCtx,
-                        Deadline
-                    )
-            end
-    end.
 
 -spec maybe_stash_events(options(), state(), [event()]) ->
     {state(), [mg_core_events:event()]}.
@@ -621,7 +584,6 @@ handle_complex_action(ComplexAction, ReqCtx, StateWas) ->
     TimerAction = maps:get(timer, ComplexAction, undefined),
     State = handle_timer_action(TimerAction, ReqCtx, StateWas),
     DelayedActions = #{
-        add_tag => maps:get(tag, ComplexAction, undefined),
         remove => maps:get(remove, ComplexAction, undefined)
     },
     add_delayed_actions(DelayedActions, State).
@@ -658,10 +620,6 @@ machine_options(Options = #{machines := MachinesOptions}) ->
     (maps:without([processor], MachinesOptions))#{
         processor => {?MODULE, Options}
     }.
-
--spec tags_machine_options(options()) -> mg_core_machine_tags:options().
-tags_machine_options(#{tagging := Options}) ->
-    Options.
 
 -spec get_option(atom(), options()) -> _.
 get_option(Subj, Options) ->
@@ -781,12 +739,6 @@ add_delayed_actions(NewDelayedActions, #{delayed_actions := OldDelayedActions} =
     State#{delayed_actions => MergedActions}.
 
 -spec add_delayed_action(Field :: atom(), Value :: term(), delayed_actions()) -> delayed_actions().
-%% Tag
-add_delayed_action(add_tag, Tag, DelayedActions) ->
-    % NOTE
-    % Deliberately discarding existing tag action here, even if, say, ongoing repair does not tag.
-    % This is kind of a hack, yet this way repairs are more useful in practice.
-    DelayedActions#{add_tag => Tag};
 %% Removing
 add_delayed_action(remove, undefined, DelayedActions) ->
     DelayedActions;
@@ -879,11 +831,10 @@ opaque_to_state([4, EventsRange, AuxState, DelayedActions, Timer, Events]) ->
 delayed_actions_to_opaque(undefined) ->
     null;
 delayed_actions_to_opaque(
-    #{add_tag := Tag, remove := Remove, new_events_range := NewEventsRange}
+    #{remove := Remove, new_events_range := NewEventsRange}
 ) ->
     [
-        4,
-        mg_core_events:maybe_to_opaque(Tag, fun mg_core_events:identity/1),
+        5,
         mg_core_events:maybe_to_opaque(Remove, fun remove_to_opaque/1),
         mg_core_events:events_range_to_opaque(NewEventsRange)
     ].
@@ -891,9 +842,13 @@ delayed_actions_to_opaque(
 -spec opaque_to_delayed_actions(mg_core_storage:opaque()) -> delayed_actions().
 opaque_to_delayed_actions(null) ->
     undefined;
-opaque_to_delayed_actions([4, Tag, Remove, EventsRange]) ->
+opaque_to_delayed_actions([4, _, Remove, EventsRange]) ->
     #{
-        add_tag => mg_core_events:maybe_from_opaque(Tag, fun mg_core_events:identity/1),
+        remove => mg_core_events:maybe_from_opaque(Remove, fun opaque_to_remove/1),
+        new_events_range => mg_core_events:opaque_to_events_range(EventsRange)
+    };
+opaque_to_delayed_actions([5, Remove, EventsRange]) ->
+    #{
         remove => mg_core_events:maybe_from_opaque(Remove, fun opaque_to_remove/1),
         new_events_range => mg_core_events:opaque_to_events_range(EventsRange)
     }.
