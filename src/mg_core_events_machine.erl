@@ -26,9 +26,9 @@
 -include_lib("machinegun_core/include/pulse.hrl").
 
 %% API
+-export_type([id/0]).
 -export_type([options/0]).
 -export_type([storage_options/0]).
--export_type([ref/0]).
 -export_type([machine/0]).
 -export_type([timer_action/0]).
 -export_type([complex_action/0]).
@@ -115,7 +115,6 @@
 -type timeout_() :: non_neg_integer().
 -type deadline() :: mg_core_deadline:deadline().
 
--type ref() :: {id, id()}.
 -type options() :: #{
     namespace => mg_core:ns(),
     events_storage => storage_options(),
@@ -162,51 +161,50 @@ start(Options, ID, Args, ReqCtx, Deadline) ->
 
 -spec repair(
     options(),
-    ref(),
+    id(),
     term(),
     mg_core_events:history_range(),
     request_context(),
     deadline()
 ) -> {ok, _Resp} | {error, repair_error()}.
-repair(Options, Ref, Args, HRange, ReqCtx, Deadline) ->
+repair(Options, ID, Args, HRange, ReqCtx, Deadline) ->
     mg_core_machine:repair(
         machine_options(Options),
-        ref2id(Options, Ref),
+        ID,
         {Args, HRange},
         ReqCtx,
         Deadline
     ).
 
--spec simple_repair(options(), ref(), request_context(), deadline()) -> ok.
-simple_repair(Options, Ref, ReqCtx, Deadline) ->
+-spec simple_repair(options(), id(), request_context(), deadline()) -> ok.
+simple_repair(Options, ID, ReqCtx, Deadline) ->
     ok = mg_core_machine:simple_repair(
         machine_options(Options),
-        ref2id(Options, Ref),
+        ID,
         ReqCtx,
         Deadline
     ).
 
 -spec call(
     options(),
-    ref(),
+    id(),
     term(),
     mg_core_events:history_range(),
     request_context(),
     deadline()
 ) -> _Resp.
-call(Options, Ref, Args, HRange, ReqCtx, Deadline) ->
+call(Options, ID, Args, HRange, ReqCtx, Deadline) ->
     mg_core_machine:call(
         machine_options(Options),
-        ref2id(Options, Ref),
+        ID,
         {Args, HRange},
         ReqCtx,
         Deadline
     ).
 
--spec get_machine(options(), ref(), mg_core_events:history_range()) -> machine().
-get_machine(Options, Ref, HRange) ->
+-spec get_machine(options(), id(), mg_core_events:history_range()) -> machine().
+get_machine(Options, ID, HRange) ->
     % нужно понимать, что эти операции разнесены по времени, и тут могут быть рэйсы
-    ID = ref2id(Options, Ref),
     InitialState = opaque_to_state(mg_core_machine:get(machine_options(Options), ID)),
     EffectiveState = maybe_apply_delayed_actions(InitialState),
     _ = mg_core_utils:throw_if_undefined(EffectiveState, {logic, machine_not_found}),
@@ -215,12 +213,6 @@ get_machine(Options, Ref, HRange) ->
 -spec remove(options(), id(), request_context(), deadline()) -> ok.
 remove(Options, ID, ReqCtx, Deadline) ->
     mg_core_machine:call(machine_options(Options), ID, remove, ReqCtx, Deadline).
-
-%%
-
--spec ref2id(options(), ref()) -> id() | no_return().
-ref2id(_, {id, ID}) ->
-    ID.
 
 %%
 %% mg_core_processor handler
