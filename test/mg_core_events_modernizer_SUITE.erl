@@ -219,7 +219,7 @@ modernize(Options, EventsMachineOptions, MachineID) ->
         Options,
         EventsMachineOptions,
         <<>>,
-        {id, MachineID},
+        MachineID,
         {undefined, undefined, forward}
     ).
 
@@ -231,7 +231,7 @@ get_history(Options, MachineID) ->
 -spec get_history(mg_core_events_machine:options(), mg_core:id(), mg_core_events:history_range()) ->
     history().
 get_history(Options, MachineID, HRange) ->
-    Machine = mg_core_events_machine:get_machine(Options, {id, MachineID}, HRange),
+    Machine = mg_core_events_machine:get_machine(Options, MachineID, HRange),
     {_AuxState, History} = decode_machine(Machine),
     History.
 

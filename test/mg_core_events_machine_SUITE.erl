@@ -431,7 +431,7 @@ call(Options, MachineID, Args) ->
     Deadline = mg_core_deadline:from_timeout(3000),
     Response = mg_core_events_machine:call(
         Options,
-        {id, MachineID},
+        MachineID,
         encode(Args),
         HRange,
         <<>>,
@@ -445,7 +445,7 @@ repair(Options, MachineID, Args) ->
     Deadline = mg_core_deadline:from_timeout(3000),
     {ok, Response} = mg_core_events_machine:repair(
         Options,
-        {id, MachineID},
+        MachineID,
         encode(Args),
         HRange,
         <<>>,
@@ -472,7 +472,7 @@ get_machine(Options, MachineID) ->
 -spec get_machine(mg_core_events_machine:options(), mg_core:id(), mg_core_events:history_range()) ->
     {aux_state(), history()}.
 get_machine(Options, MachineID, HRange) ->
-    Machine = mg_core_events_machine:get_machine(Options, {id, MachineID}, HRange),
+    Machine = mg_core_events_machine:get_machine(Options, MachineID, HRange),
     decode_machine(Machine).
 
 -spec extract_events(history()) -> [event()].
