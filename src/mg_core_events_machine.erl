@@ -825,7 +825,8 @@ delayed_actions_to_opaque(
     #{remove := Remove, new_events_range := NewEventsRange}
 ) ->
     [
-        5,
+        4,
+        null,
         mg_core_events:maybe_to_opaque(Remove, fun remove_to_opaque/1),
         mg_core_events:events_range_to_opaque(NewEventsRange)
     ].
@@ -834,11 +835,6 @@ delayed_actions_to_opaque(
 opaque_to_delayed_actions(null) ->
     undefined;
 opaque_to_delayed_actions([4, _, Remove, EventsRange]) ->
-    #{
-        remove => mg_core_events:maybe_from_opaque(Remove, fun opaque_to_remove/1),
-        new_events_range => mg_core_events:opaque_to_events_range(EventsRange)
-    };
-opaque_to_delayed_actions([5, Remove, EventsRange]) ->
     #{
         remove => mg_core_events:maybe_from_opaque(Remove, fun opaque_to_remove/1),
         new_events_range => mg_core_events:opaque_to_events_range(EventsRange)
