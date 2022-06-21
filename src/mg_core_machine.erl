@@ -79,6 +79,7 @@
 -export_type([processor_flow_action/0]).
 -export_type([search_query/0]).
 -export_type([machine_regular_status/0]).
+-export_type([repair_type/0]).
 
 -export([child_spec/2]).
 -export([start_link/1]).
@@ -179,6 +180,8 @@
     | {processing, request_context()}.
 -type machine_status() ::
     machine_regular_status() | {error, Reason :: term(), machine_regular_status()}.
+
+-type repair_type() :: repair | simple_repair.
 
 %%
 
@@ -713,12 +716,39 @@ status_range_index(_) ->
 -spec process_simple_repair(request_context(), deadline(), state()) -> state().
 process_simple_repair(ReqCtx, Deadline, State) ->
     #{storage_machine := StorageMachine = #{status := {error, _, OldStatus}}} = State,
-    transit_state(
+    _ = emit_repair_started_beat(simple_repair, ReqCtx, Deadline, State),
+    NewState = transit_state(
         ReqCtx,
         Deadline,
         StorageMachine#{status => OldStatus},
         State
-    ).
+    ),
+    _ = emit_repair_finished_beat(simple_repair, ReqCtx, Deadline, State),
+    NewState.
+
+-spec emit_repair_started_beat(repair_type(), request_context(), deadline(), state()) ->
+    ok.
+emit_repair_started_beat(RepairType, ReqCtx, Deadline, State) ->
+    #{id := ID, options := #{namespace := NS} = Options} = State,
+    ok = emit_beat(Options, #mg_core_machine_lifecycle_repair_started{
+        namespace = NS,
+        machine_id = ID,
+        request_context = ReqCtx,
+        deadline = Deadline,
+        repair_type = RepairType
+    }).
+
+-spec emit_repair_finished_beat(repair_type(), request_context(), deadline(), state()) ->
+    ok.
+emit_repair_finished_beat(RepairType, ReqCtx, Deadline, State) ->
+    #{id := ID, options := #{namespace := NS} = Options} = State,
+    ok = emit_beat(Options, #mg_core_machine_lifecycle_repair_finished{
+        namespace = NS,
+        machine_id = ID,
+        request_context = ReqCtx,
+        deadline = Deadline,
+        repair_type = RepairType
+    }).
 
 -spec process(processor_impact(), processing_context(), request_context(), deadline(), state()) ->
     state().
@@ -1103,7 +1133,15 @@ emit_pre_process_beats(Impact, ReqCtx, Deadline, State) ->
         request_context = ReqCtx,
         deadline = Deadline
     }),
+    ok = emit_pre_process_repair_beats(Impact, ReqCtx, Deadline, State),
     emit_pre_process_timer_beats(Impact, ReqCtx, Deadline, State).
+
+-spec emit_pre_process_repair_beats(processor_impact(), request_context(), deadline(), state()) ->
+    ok.
+emit_pre_process_repair_beats({repair, _}, ReqCtx, Deadline, State) ->
+    emit_repair_started_beat(repair, ReqCtx, Deadline, State);
+emit_pre_process_repair_beats(_, _ReqCtx, _Deadline, _State) ->
+    ok.
 
 -spec emit_pre_process_timer_beats(processor_impact(), request_context(), deadline(), state()) ->
     ok.
@@ -1142,7 +1180,15 @@ emit_post_process_beats(Impact, ReqCtx, Deadline, Duration, State) ->
         deadline = Deadline,
         duration = Duration
     }),
+    ok = emit_post_process_repair_beats(Impact, ReqCtx, Deadline, State),
     emit_post_process_timer_beats(Impact, ReqCtx, Deadline, Duration, State).
+
+-spec emit_post_process_repair_beats(processor_impact(), request_context(), deadline(), state()) ->
+    ok.
+emit_post_process_repair_beats({repair, _}, ReqCtx, Deadline, State) ->
+    emit_repair_finished_beat(repair, ReqCtx, Deadline, State);
+emit_post_process_repair_beats(_, _ReqCtx, _Deadline, _State) ->
+    ok.
 
 -spec emit_post_process_timer_beats(
     processor_impact(),

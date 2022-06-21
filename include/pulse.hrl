@@ -183,6 +183,22 @@
     exception :: mg_core_utils:exception()
 }).
 
+-record(mg_core_machine_lifecycle_repair_started, {
+    namespace :: mg_core:ns(),
+    machine_id :: mg_core:id(),
+    request_context :: mg_core:request_context(),
+    deadline :: mg_core_deadline:deadline(),
+    repair_type :: mg_core_machine:repair_type()
+}).
+
+-record(mg_core_machine_lifecycle_repair_finished, {
+    namespace :: mg_core:ns(),
+    machine_id :: mg_core:id(),
+    request_context :: mg_core:request_context(),
+    deadline :: mg_core_deadline:deadline(),
+    repair_type :: mg_core_machine:repair_type()
+}).
+
 -record(mg_core_machine_lifecycle_loading_error, {
     namespace :: mg_core:ns(),
     machine_id :: mg_core:id(),
