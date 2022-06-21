@@ -52,8 +52,7 @@
     | #mg_core_machine_lifecycle_unloaded{}
     | #mg_core_machine_lifecycle_committed_suicide{}
     | #mg_core_machine_lifecycle_failed{}
-    | #mg_core_machine_lifecycle_repair_started{}
-    | #mg_core_machine_lifecycle_repair_finished{}
+    | #mg_core_machine_lifecycle_repaired{}
     | #mg_core_machine_lifecycle_loading_error{}
     | #mg_core_machine_lifecycle_transient_error{}
     % Machine call handling
@@ -86,7 +85,9 @@
     % Riak client call handling
     | #mg_core_riak_connection_pool_state_reached{}
     | #mg_core_riak_connection_pool_connection_killed{}
-    | #mg_core_riak_connection_pool_error{}.
+    | #mg_core_riak_connection_pool_error{}
+    % Process repair result
+    | #mg_core_machine_repair_failed{}.
 
 -type handler() :: mg_core_utils:mod_opts() | undefined.
 

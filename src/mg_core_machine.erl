@@ -716,38 +716,34 @@ status_range_index(_) ->
 -spec process_simple_repair(request_context(), deadline(), state()) -> state().
 process_simple_repair(ReqCtx, Deadline, State) ->
     #{storage_machine := StorageMachine = #{status := {error, _, OldStatus}}} = State,
-    _ = emit_repair_started_beat(simple_repair, ReqCtx, Deadline, State),
-    NewState = transit_state(
+    transit_state(
         ReqCtx,
         Deadline,
         StorageMachine#{status => OldStatus},
         State
-    ),
-    _ = emit_repair_finished_beat(simple_repair, ReqCtx, Deadline, State),
-    NewState.
+    ).
 
--spec emit_repair_started_beat(repair_type(), request_context(), deadline(), state()) ->
+-spec emit_repaired_beat(request_context(), deadline(), state()) ->
     ok.
-emit_repair_started_beat(RepairType, ReqCtx, Deadline, State) ->
+emit_repaired_beat(ReqCtx, Deadline, State) ->
     #{id := ID, options := #{namespace := NS} = Options} = State,
-    ok = emit_beat(Options, #mg_core_machine_lifecycle_repair_started{
+    ok = emit_beat(Options, #mg_core_machine_lifecycle_repaired{
         namespace = NS,
         machine_id = ID,
         request_context = ReqCtx,
-        deadline = Deadline,
-        repair_type = RepairType
+        deadline = Deadline
     }).
 
--spec emit_repair_finished_beat(repair_type(), request_context(), deadline(), state()) ->
+-spec emit_repair_failed_beat(Reason :: term(), request_context(), deadline(), state()) ->
     ok.
-emit_repair_finished_beat(RepairType, ReqCtx, Deadline, State) ->
+emit_repair_failed_beat(Reason, ReqCtx, Deadline, State) ->
     #{id := ID, options := #{namespace := NS} = Options} = State,
-    ok = emit_beat(Options, #mg_core_machine_lifecycle_repair_finished{
+    ok = emit_beat(Options, #mg_core_machine_repair_failed{
         namespace = NS,
         machine_id = ID,
         request_context = ReqCtx,
         deadline = Deadline,
-        repair_type = RepairType
+        reason = Reason
     }).
 
 -spec process(processor_impact(), processing_context(), request_context(), deadline(), state()) ->
@@ -874,6 +870,7 @@ process_unsafe(
     {ReplyAction, Action, NewMachineState} =
         call_processor(Impact, ProcessingCtx, ReqCtx, Deadline, State),
     ProcessDuration = erlang:monotonic_time() - ProcessStart,
+    ok = emit_process_result_beat(Impact, ReplyAction, ReqCtx, Deadline, State),
     ok = emit_post_process_beats(Impact, ReqCtx, Deadline, ProcessDuration, State),
     ok = try_suicide(State, ReqCtx),
     NewStorageMachine0 = StorageMachine#{state := NewMachineState},
@@ -1030,7 +1027,7 @@ transit_state(ReqCtx, Deadline, NewStorageMachine = #{status := Status}, State) 
     _ =
         case Status of
             StatusWas -> ok;
-            _Different -> handle_status_transition(Status, State)
+            _Different -> handle_status_transition(StatusWas, Status, ReqCtx, Deadline, State)
         end,
     F = fun() ->
         mg_core_storage:put(
@@ -1048,12 +1045,20 @@ transit_state(ReqCtx, Deadline, NewStorageMachine = #{status := Status}, State) 
         storage_context := NewStorageContext
     }.
 
--spec handle_status_transition(machine_status(), state()) -> _.
-handle_status_transition({waiting, TargetTimestamp, _, _}, State) ->
+-spec handle_status_transition(
+    From :: machine_status(), To :: machine_status(), request_context(), deadline(), state()
+) -> _.
+handle_status_transition({error, _Reason, _}, _Any, ReqCtx, Deadline, State) ->
+    emit_repaired_beat(ReqCtx, Deadline, State);
+handle_status_transition(_Any, {error, _Reason, _}, _, _, _State) ->
+    %% Can't put machine_lifetime_failed beat here because
+    %% nonexistant storage_machines can also fail on init
+    ok;
+handle_status_transition(_Any, {waiting, TargetTimestamp, _, _}, _, _, State) ->
     try_send_timer_task(timers, TargetTimestamp, State);
-handle_status_transition({retrying, TargetTimestamp, _, _, _}, State) ->
+handle_status_transition(_Any, {retrying, TargetTimestamp, _, _, _}, _, _, State) ->
     try_send_timer_task(timers_retries, TargetTimestamp, State);
-handle_status_transition(_Status, _State) ->
+handle_status_transition(_FromStatus, _ToStatus, _ReqCtx, _Deadline, _State) ->
     ok.
 
 -spec try_acquire_scheduler(scheduler_type(), state()) -> state().
@@ -1133,15 +1138,7 @@ emit_pre_process_beats(Impact, ReqCtx, Deadline, State) ->
         request_context = ReqCtx,
         deadline = Deadline
     }),
-    ok = emit_pre_process_repair_beats(Impact, ReqCtx, Deadline, State),
     emit_pre_process_timer_beats(Impact, ReqCtx, Deadline, State).
-
--spec emit_pre_process_repair_beats(processor_impact(), request_context(), deadline(), state()) ->
-    ok.
-emit_pre_process_repair_beats({repair, _}, ReqCtx, Deadline, State) ->
-    emit_repair_started_beat(repair, ReqCtx, Deadline, State);
-emit_pre_process_repair_beats(_, _ReqCtx, _Deadline, _State) ->
-    ok.
 
 -spec emit_pre_process_timer_beats(processor_impact(), request_context(), deadline(), state()) ->
     ok.
@@ -1180,15 +1177,7 @@ emit_post_process_beats(Impact, ReqCtx, Deadline, Duration, State) ->
         deadline = Deadline,
         duration = Duration
     }),
-    ok = emit_post_process_repair_beats(Impact, ReqCtx, Deadline, State),
     emit_post_process_timer_beats(Impact, ReqCtx, Deadline, Duration, State).
-
--spec emit_post_process_repair_beats(processor_impact(), request_context(), deadline(), state()) ->
-    ok.
-emit_post_process_repair_beats({repair, _}, ReqCtx, Deadline, State) ->
-    emit_repair_finished_beat(repair, ReqCtx, Deadline, State);
-emit_post_process_repair_beats(_, _ReqCtx, _Deadline, _State) ->
-    ok.
 
 -spec emit_post_process_timer_beats(
     processor_impact(),
@@ -1214,6 +1203,18 @@ emit_post_process_timer_beats(timeout, ReqCtx, Deadline, Duration, State) ->
         duration = Duration
     });
 emit_post_process_timer_beats(_Impact, _ReqCtx, _Deadline, _Duration, _State) ->
+    ok.
+
+-spec emit_process_result_beat(
+    processor_impact(),
+    processor_reply_action(),
+    deadline(),
+    integer(),
+    state()
+) -> ok.
+emit_process_result_beat({repair, _}, {reply, {error, Reason}}, ReqCtx, Deadline, State) ->
+    emit_repair_failed_beat(Reason, ReqCtx, Deadline, State);
+emit_process_result_beat(_Impact, _ReplyAction, _ReqCtx, _Deadline, _State) ->
     ok.
 
 -spec extract_timer_queue_info(machine_status()) ->
