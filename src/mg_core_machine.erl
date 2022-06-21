@@ -734,18 +734,6 @@ emit_repaired_beat(ReqCtx, Deadline, State) ->
         deadline = Deadline
     }).
 
--spec emit_repair_failed_beat(Reason :: term(), request_context(), deadline(), state()) ->
-    ok.
-emit_repair_failed_beat(Reason, ReqCtx, Deadline, State) ->
-    #{id := ID, options := #{namespace := NS} = Options} = State,
-    ok = emit_beat(Options, #mg_core_machine_repair_failed{
-        namespace = NS,
-        machine_id = ID,
-        request_context = ReqCtx,
-        deadline = Deadline,
-        reason = Reason
-    }).
-
 -spec process(processor_impact(), processing_context(), request_context(), deadline(), state()) ->
     state().
 process(Impact, ProcessingCtx, ReqCtx, Deadline, State) ->
@@ -870,7 +858,6 @@ process_unsafe(
     {ReplyAction, Action, NewMachineState} =
         call_processor(Impact, ProcessingCtx, ReqCtx, Deadline, State),
     ProcessDuration = erlang:monotonic_time() - ProcessStart,
-    ok = emit_process_result_beat(Impact, ReplyAction, ReqCtx, Deadline, State),
     ok = emit_post_process_beats(Impact, ReqCtx, Deadline, ProcessDuration, State),
     ok = try_suicide(State, ReqCtx),
     NewStorageMachine0 = StorageMachine#{state := NewMachineState},
@@ -1203,18 +1190,6 @@ emit_post_process_timer_beats(timeout, ReqCtx, Deadline, Duration, State) ->
         duration = Duration
     });
 emit_post_process_timer_beats(_Impact, _ReqCtx, _Deadline, _Duration, _State) ->
-    ok.
-
--spec emit_process_result_beat(
-    processor_impact(),
-    processor_reply_action(),
-    deadline(),
-    integer(),
-    state()
-) -> ok.
-emit_process_result_beat({repair, _}, {reply, {error, Reason}}, ReqCtx, Deadline, State) ->
-    emit_repair_failed_beat(Reason, ReqCtx, Deadline, State);
-emit_process_result_beat(_Impact, _ReplyAction, _ReqCtx, _Deadline, _State) ->
     ok.
 
 -spec extract_timer_queue_info(machine_status()) ->

@@ -85,9 +85,7 @@
     % Riak client call handling
     | #mg_core_riak_connection_pool_state_reached{}
     | #mg_core_riak_connection_pool_connection_killed{}
-    | #mg_core_riak_connection_pool_error{}
-    % Process repair result
-    | #mg_core_machine_repair_failed{}.
+    | #mg_core_riak_connection_pool_error{}.
 
 -type handler() :: mg_core_utils:mod_opts() | undefined.
 
