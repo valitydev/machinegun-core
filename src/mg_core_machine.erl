@@ -79,7 +79,6 @@
 -export_type([processor_flow_action/0]).
 -export_type([search_query/0]).
 -export_type([machine_regular_status/0]).
--export_type([repair_type/0]).
 
 -export([child_spec/2]).
 -export([start_link/1]).
@@ -180,8 +179,6 @@
     | {processing, request_context()}.
 -type machine_status() ::
     machine_regular_status() | {error, Reason :: term(), machine_regular_status()}.
-
--type repair_type() :: repair | simple_repair.
 
 %%
 
