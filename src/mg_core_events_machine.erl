@@ -41,7 +41,6 @@
 -export_type([call_result/0]).
 -export_type([repair_result/0]).
 -export_type([request_context/0]).
--export_type([machine_status_simple/0]).
 
 -export([child_spec/2]).
 -export([start_link/1]).
@@ -89,7 +88,6 @@
 -type reply_action() :: mg_core_machine:processor_reply_action().
 -type flow_action() :: mg_core_machine:processor_flow_action().
 -type process_result() :: {reply_action(), flow_action(), state()}.
--type machine_status_simple() :: working | {failed, Reason :: term()}.
 
 -type machine() :: #{
     ns := mg_core:ns(),
@@ -98,7 +96,7 @@
     history_range := mg_core_events:history_range(),
     aux_state := aux_state(),
     timer := int_timer(),
-    status => machine_status_simple()
+    status => mg_core_machine:machine_status()
 }.
 
 %% TODO сделать более симпатично
@@ -643,13 +641,7 @@ machine(Options = #{namespace := Namespace}, ID, State, HRange) ->
 ) -> machine().
 machine(Options, ID, State, Status, HRange) ->
     Machine = machine(Options, ID, State, HRange),
-    Machine#{status => simplify_machine_status(Status)}.
-
--spec simplify_machine_status(mg_core_machine:machine_status()) -> machine_status_simple().
-simplify_machine_status({error, Reason, _}) ->
-    {failed, Reason};
-simplify_machine_status(_) ->
-    working.
+    Machine#{status => Status}.
 
 -type event_getter() :: fun((events_range()) -> [mg_core_events:event()]).
 -type event_sources() :: [{events_range(), event_getter()}, ...].
