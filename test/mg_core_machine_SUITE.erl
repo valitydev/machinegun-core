@@ -16,6 +16,7 @@
 
 -module(mg_core_machine_SUITE).
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 %% tests descriptions
 -export([all/0]).
@@ -119,11 +120,26 @@ simple_test(C) ->
     ok = timer:sleep(2000),
     2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
 
+    % simple notification
+    ok = mg_core_machine:notify(Options, ID, 40),
+    2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+    true = assert_poll_minimum_time(
+        poll_for_value(
+            fun() ->
+                mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
+            end,
+            42,
+            3000
+        ),
+        %% at least 1 second of notification queue handicap
+        1000
+    ),
+
     % call fail/simple_repair
     {logic, machine_failed} =
         (catch mg_core_machine:call(Options, ID, fail, ?REQ_CTX, mg_core_deadline:default())),
     ok = mg_core_machine:simple_repair(Options, ID, ?REQ_CTX, mg_core_deadline:default()),
-    2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+    42 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
 
     % call fail/repair
     {logic, machine_failed} =
@@ -135,7 +151,47 @@ simple_test(C) ->
         ?REQ_CTX,
         mg_core_deadline:default()
     ),
-    2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+    42 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+
+    % fail with notification, repair, retry notification
+    ok = mg_core_machine:notify(Options, ID, [<<"kill_when">>, 42]),
+    %% wait for notification to kill the machine
+    true = assert_poll_minimum_time(
+        poll_for_exception(
+            fun() ->
+                mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
+            end,
+            {logic, machine_failed},
+            5000
+        ),
+        %% at least 1 second of notification queue handicap
+        1000
+    ),
+    repaired = mg_core_machine:repair(
+        Options, ID, repair_arg, ?REQ_CTX, mg_core_deadline:default()
+    ),
+    %% machine is repaired but notification has not retried yet
+    ok = timer:sleep(2000),
+    42 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+    %% wait for notification to kill the machine a second time (it re_tried)
+    true = assert_poll_minimum_time(
+        poll_for_exception(
+            fun() ->
+                mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
+            end,
+            {logic, machine_failed},
+            5000
+        ),
+        %% at least 1 second of notification queue handicap
+        1000
+    ),
+    repaired = mg_core_machine:repair(
+        Options, ID, repair_arg, ?REQ_CTX, mg_core_deadline:default()
+    ),
+    ok = mg_core_machine:call(Options, ID, increment, ?REQ_CTX, mg_core_deadline:default()),
+    %% notification no longer kills the machine
+    ok = timer:sleep(3000),
+    43 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
 
     % call fail/repair fail/repair
     {logic, machine_failed} =
@@ -157,7 +213,7 @@ simple_test(C) ->
             ?REQ_CTX,
             mg_core_deadline:default()
         )),
-    2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+    43 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
 
     ok = mg_core_machine:call(Options, ID, remove, ?REQ_CTX, mg_core_deadline:default()),
 
@@ -198,6 +254,15 @@ process_machine(_, _, {call, delayed_increment}, _, ?REQ_CTX, _, State) ->
     {{reply, ok}, {wait, genlib_time:unow() + 1, ?REQ_CTX, 5000}, State};
 process_machine(_, _, {call, remove}, _, ?REQ_CTX, _, State) ->
     {{reply, ok}, remove, State};
+process_machine(_, _, {notification, [<<"kill_when">>, Arg]}, _, undefined, _, State) ->
+    case State of
+        [_, Arg] ->
+            _ = exit(1);
+        _ ->
+            {{reply, ok}, sleep, State}
+    end;
+process_machine(_, _, {notification, Arg}, _, _, _, [TestKey, TestValue]) when is_integer(Arg) ->
+    {{reply, ok}, sleep, [TestKey, TestValue + Arg]};
 process_machine(_, _, timeout, _, ?REQ_CTX, _, [TestKey, TestValue]) ->
     {noreply, sleep, [TestKey, TestValue + 1]};
 process_machine(_, _, {repair, repair_arg}, _, ?REQ_CTX, _, [TestKey, TestValue]) ->
@@ -222,21 +287,85 @@ stop_automaton(Pid) ->
 -spec automaton_options(config()) -> mg_core_machine:options().
 automaton_options(C) ->
     Scheduler = #{},
+    Namespace = <<"test">>,
     #{
-        namespace => <<"test">>,
+        namespace => Namespace,
         processor => ?MODULE,
         storage => mg_core_storage_memory,
         worker => #{
             registry => ?config(registry, C)
         },
+        notification => #{
+            namespace => Namespace,
+            pulse => ?MODULE,
+            storage => mg_core_storage_memory
+        },
+        notification_scan_handicap => 1,
+        notification_reschedule_time => 2,
         pulse => ?MODULE,
         schedulers => #{
             timers => Scheduler,
             timers_retries => Scheduler,
-            overseer => Scheduler
+            overseer => Scheduler,
+            notification => Scheduler
         }
     }.
 
 -spec handle_beat(_, mg_core_pulse:beat()) -> ok.
 handle_beat(_, Beat) ->
     ct:pal("~p", [Beat]).
+
+%% Utills
+
+-spec assert_poll_minimum_time({ok, pos_integer()} | {error, timeout}, non_neg_integer()) ->
+    boolean() | {error, timeout}.
+assert_poll_minimum_time({error, timeout}, _TargetCutoff) ->
+    {error, timeout};
+assert_poll_minimum_time({ok, TimeSpent}, TargetCutoff) when TimeSpent >= TargetCutoff ->
+    true;
+assert_poll_minimum_time({ok, TimeSpent}, TargetCutoff) when TimeSpent =< TargetCutoff ->
+    _ = ct:pal(error, "Polling took ~p seconds, which is shorter then the target ~p seconds.", [
+        TimeSpent, TargetCutoff
+    ]),
+    false.
+
+-spec poll_for_value(fun(), term(), pos_integer()) -> {ok, pos_integer()} | {error, timeout}.
+poll_for_value(Fun, Wanted, MaxTime) ->
+    poll_for_value(Fun, Wanted, MaxTime, 0).
+
+-spec poll_for_value(fun(), term(), pos_integer(), non_neg_integer()) ->
+    {ok, pos_integer()} | {error, timeout}.
+poll_for_value(_Fun, _Wanted, MaxTime, TimeAcc) when TimeAcc > MaxTime ->
+    {error, timeout};
+poll_for_value(Fun, Wanted, MaxTime, TimeAcc) ->
+    Time0 = erlang:system_time(millisecond),
+    case Fun() of
+        Wanted ->
+            {ok, TimeAcc};
+        _ ->
+            _ = timer:sleep(100),
+            poll_for_value(
+                Fun, Wanted, MaxTime, TimeAcc + (erlang:system_time(millisecond) - Time0)
+            )
+    end.
+
+-spec poll_for_exception(fun(), term(), pos_integer()) -> {ok, pos_integer()} | {error, timeout}.
+poll_for_exception(Fun, Wanted, MaxTime) ->
+    poll_for_exception(Fun, Wanted, MaxTime, 0).
+
+-spec poll_for_exception(fun(), term(), pos_integer(), non_neg_integer()) ->
+    {ok, pos_integer()} | {error, timeout}.
+poll_for_exception(_Fun, _Wanted, MaxTime, TimeAcc) when TimeAcc > MaxTime ->
+    {error, timeout};
+poll_for_exception(Fun, Wanted, MaxTime, TimeAcc) ->
+    Time0 = erlang:system_time(millisecond),
+    try Fun() of
+        _ ->
+            _ = timer:sleep(100),
+            poll_for_exception(
+                Fun, Wanted, MaxTime, TimeAcc + (erlang:system_time(millisecond) - Time0)
+            )
+    catch
+        throw:Wanted ->
+            {ok, TimeAcc}
+    end.

@@ -51,6 +51,7 @@
     worker := mg_core_workers_manager:ns_options(),
     pulse := mg_core_pulse:handler(),
     events_storage := mg_core_storage:options(),
+    notification := mg_core_notification:options(),
     default_processing_timeout := timeout()
 }.
 -type ns_options() :: #{
@@ -59,6 +60,7 @@
     worker := mg_core_workers_manager:ns_options(),
     pulse := mg_core_pulse:handler(),
     events_storage := storage_options(),
+    notification := mg_core_notification:options(),
     default_processing_timeout := timeout()
 }.
 % like mg_core_storage:options() except `name`
@@ -221,12 +223,15 @@ new_state() ->
 
 -spec machine_options(ns_options()) -> mg_core_machine:options().
 machine_options(
-    Options = #{namespace := Namespace, storage := Storage, worker := Worker, pulse := Pulse}
+    Options = #{
+        namespace := Namespace, notification := Notification, storage := Storage, worker := Worker, pulse := Pulse
+    }
 ) ->
     #{
         namespace => mg_core_utils:concatenate_namespaces(Namespace, <<"machines">>),
         processor => {?MODULE, Options},
         storage => Storage,
+        notification => Notification,
         worker => Worker,
         pulse => Pulse
     }.

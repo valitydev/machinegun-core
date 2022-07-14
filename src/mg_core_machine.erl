@@ -89,7 +89,9 @@
 -export([simple_repair/4]).
 -export([repair/5]).
 -export([call/5]).
+-export([notify/3]).
 -export([send_timeout/4]).
+-export([send_notification/5]).
 -export([resume_interrupted/3]).
 -export([fail/4]).
 -export([fail/5]).
@@ -114,7 +116,7 @@
 %% API
 %%
 -type seconds() :: non_neg_integer().
--type scheduler_type() :: overseer | timers | timers_retries.
+-type scheduler_type() :: overseer | timers | timers_retries | notification.
 -type scheduler_opt() ::
     disable
     | #{
@@ -150,12 +152,16 @@
     namespace := mg_core:ns(),
     pulse := mg_core_pulse:handler(),
     storage => storage_options(),
+    notification := mg_core_notification:options(),
     processor => mg_core_utils:mod_opts(),
     worker => mg_core_workers_manager:ns_options(),
     retries => retry_opt(),
     schedulers => schedulers_opt(),
     suicide_probability => suicide_probability(),
-    timer_processing_timeout => timeout()
+    timer_processing_timeout => timeout(),
+    notification_processing_timeout => timeout(),
+    notification_scan_handicap => seconds(),
+    notification_reschedule_time => seconds()
 }.
 
 % like mg_core_storage:options() except `name`
@@ -180,8 +186,7 @@
 -type machine_regular_status() ::
     sleeping
     | {waiting, genlib_time:ts(), request_context(), HandlingTimeout :: pos_integer()}
-    | {retrying, Target :: genlib_time:ts(), Start :: genlib_time:ts(),
-        Attempt :: non_neg_integer(), request_context()}
+    | {retrying, Target :: genlib_time:ts(), Start :: genlib_time:ts(), Attempt :: non_neg_integer(), request_context()}
     | {processing, request_context()}.
 -type machine_status() ::
     machine_regular_status() | {error, Reason :: term(), machine_regular_status()}.
@@ -200,6 +205,7 @@
     {init, term()}
     | {repair, term()}
     | {call, term()}
+    | {notification, term()}
     | timeout
     | continuation.
 -type processor_reply_action() :: noreply | {reply, _}.
@@ -272,6 +278,7 @@ machine_sup_child_spec(Options, ChildID) ->
                 #{strategy => rest_for_one},
                 mg_core_utils:lists_compact([
                     mg_core_storage:child_spec(storage_options(Options), storage),
+                    mg_core_notification:child_spec(notification_options(Options), notification),
                     processor_child_spec(Options),
                     mg_core_workers_manager:child_spec(manager_options(Options), manager)
                 ])
@@ -294,7 +301,8 @@ scheduler_sup_child_spec(Options, ChildID) ->
                 mg_core_utils:lists_compact([
                     scheduler_child_spec(timers, Options),
                     scheduler_child_spec(timers_retries, Options),
-                    scheduler_child_spec(overseer, Options)
+                    scheduler_child_spec(overseer, Options),
+                    scheduler_child_spec(notification, Options)
                 ])
             ]},
         restart => permanent,
@@ -317,9 +325,29 @@ repair(Options, ID, Args, ReqCtx, Deadline) ->
 call(Options, ID, Call, ReqCtx, Deadline) ->
     call_(Options, ID, {call, Call}, ReqCtx, Deadline).
 
+-spec notify(options(), mg_core:id(), mg_core_storage:opaque()) -> ok | throws().
+notify(Options, ID, Args) ->
+    NotificationID = genlib:unique(),
+    Timestamp = genlib_time:unow(),
+    _ = mg_core_notification:put(
+        notification_options(Options),
+        NotificationID,
+        #{
+            machine_id => ID,
+            args => Args
+        },
+        Timestamp,
+        undefined
+    ),
+    ok.
+
 -spec send_timeout(options(), mg_core:id(), genlib_time:ts(), deadline()) -> _Resp | throws().
 send_timeout(Options, ID, Timestamp, Deadline) ->
     call_(Options, ID, {timeout, Timestamp}, undefined, Deadline).
+
+-spec send_notification(options(), mg_core:id(), mg_core_notification:id(), term(), deadline()) -> _Resp | throws().
+send_notification(Options, ID, NotificationID, Args, Deadline) ->
+    call_(Options, ID, {notification, NotificationID, Args}, undefined, Deadline).
 
 -spec resume_interrupted(options(), mg_core:id(), deadline()) -> _Resp | throws().
 resume_interrupted(Options, ID, Deadline) ->
@@ -427,7 +455,8 @@ call_(Options, ID, Call, ReqCtx, Deadline) ->
     options => options(),
     schedulers => #{scheduler_type() => scheduler_ref()},
     storage_machine => storage_machine() | nonexistent | unknown,
-    storage_context => mg_core_storage:context() | undefined
+    storage_context => mg_core_storage:context() | undefined,
+    notifications_processed => [mg_core_notification:id()]
 }.
 
 -type scheduler_ref() ::
@@ -442,7 +471,8 @@ handle_load(ID, Options, ReqCtx) ->
         options => Options,
         schedulers => #{},
         storage_machine => unknown,
-        storage_context => undefined
+        storage_context => undefined,
+        notifications_processed => []
     },
     State2 = lists:foldl(
         fun try_acquire_scheduler/2,
@@ -513,7 +543,12 @@ handle_call(Call, CallContext, ReqCtx, Deadline, S = #{storage_machine := Storag
         {{timeout, Ts0}, #{status := {retrying, Ts1, _, _, InitialReqCtx}}} when Ts0 =:= Ts1 ->
             {noreply, process(timeout, PCtx, InitialReqCtx, Deadline, S)};
         {{timeout, _}, #{status := _}} ->
-            {{reply, {ok, ok}}, S}
+            {{reply, {ok, ok}}, S};
+        % notifications
+        {{notification, _, _}, #{status := {error, _, _}}} ->
+            {{reply, {error, {logic, machine_failed}}}, S};
+        {{notification, NotificationID, Args}, #{status := _}} ->
+            {noreply, process_notification(NotificationID, Args, PCtx, ReqCtx, Deadline, S)}
     end.
 
 -spec handle_unload(state()) -> ok.
@@ -711,6 +746,39 @@ process_simple_repair(ReqCtx, Deadline, State) ->
         StorageMachine#{status => OldStatus},
         State
     ).
+
+-spec process_notification(
+    mg_core_notification:id(), term(), processing_context(), request_context(), deadline(), state()
+) ->
+    state().
+process_notification(NotificationID, Args, PCtx, ReqCtx, Deadline, State) ->
+    %% Check if this process already processed a notification with this id
+    %% This check does not work if the machine process was reloaded at some point (by design)
+    case is_notification_processed(NotificationID, State) of
+        false ->
+            NewState = process({notification, Args}, PCtx, ReqCtx, Deadline, State),
+            handle_notification_processed(NotificationID, NewState);
+        true ->
+            State
+    end.
+
+-spec is_notification_processed(mg_core_notification:id(), state()) ->
+    boolean().
+is_notification_processed(NotificationID, #{notifications_processed := List}) ->
+    lists:member(NotificationID, List).
+
+-spec handle_notification_processed(mg_core_notification:id(), state()) ->
+    state().
+handle_notification_processed(NotificationID, State) ->
+    #{storage_machine := StorageMachine, notifications_processed := ProcessedList} = State,
+    case StorageMachine of
+        %% If machine transitioned into an error state as a result of notification handling
+        %% don't record the notification as processed (so it can be retried)
+        #{status := {error, _, _}} ->
+            State;
+        _ ->
+            State#{notifications_processed => [NotificationID | ProcessedList]}
+    end.
 
 -spec emit_repaired_beat(request_context(), deadline(), state()) ->
     ok.
@@ -1231,6 +1299,10 @@ storage_options(#{namespace := NS, storage := StorageOptions, pulse := Handler})
     {Mod, Options} = mg_core_utils:separate_mod_opts(StorageOptions, #{}),
     {Mod, Options#{name => {NS, ?MODULE, machines}, pulse => Handler}}.
 
+-spec notification_options(options()) -> mg_core_notification:options().
+notification_options(#{notification := NotificationOptions}) ->
+    NotificationOptions.
+
 -spec scheduler_child_spec(scheduler_type(), options()) -> supervisor:child_spec() | undefined.
 scheduler_child_spec(SchedulerType, Options) ->
     case maps:get(SchedulerType, maps:get(schedulers, Options, #{}), disable) of
@@ -1269,7 +1341,16 @@ scheduler_options(overseer, Options, Config) ->
         min_scan_delay => maps:get(min_scan_delay, Config, undefined),
         rescan_delay => maps:get(rescan_delay, Config, undefined)
     },
-    scheduler_options(mg_core_queue_interrupted, Options, HandlerOptions, Config).
+    scheduler_options(mg_core_queue_interrupted, Options, HandlerOptions, Config);
+scheduler_options(notification, Options, Config) ->
+    HandlerOptions = #{
+        notification => notification_options(Options),
+        processing_timeout => maps:get(notification_processing_timeout, Options, undefined),
+        min_scan_delay => maps:get(min_scan_delay, Config, undefined),
+        handicap => maps:get(notification_scan_handicap, Options, undefined),
+        reschedule_time => maps:get(notification_reschedule_time, Options, undefined)
+    },
+    scheduler_options(mg_core_queue_notifications, Options, HandlerOptions, Config).
 
 -spec scheduler_options(module(), options(), map(), scheduler_opt()) ->
     mg_core_scheduler_sup:options().

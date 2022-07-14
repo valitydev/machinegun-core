@@ -94,9 +94,7 @@ notification_put_ok_test(C) ->
         machine_id => ?MACHINE_ID,
         args => [<<"a">>, <<"b">>, 0]
     },
-    Context = mg_core_notification:put(
-        ?ID, Data, Timestamp, undefined, notification_options(C), undefined
-    ),
+    Context = mg_core_notification:put(notification_options(C), ?ID, Data, Timestamp, undefined),
     save_cfg([{context, Context}]).
 
 -spec notification_update_test(config()) -> _.
@@ -107,9 +105,7 @@ notification_update_test(C) ->
         machine_id => ?MACHINE_ID,
         args => [<<"a">>, <<"b">>, <<"c">>]
     },
-    NewContext = mg_core_notification:put(
-        ?ID, Data, Timestamp, Context, notification_options(C), undefined
-    ),
+    NewContext = mg_core_notification:put(notification_options(C), ?ID, Data, Timestamp, Context),
     save_cfg([{context, NewContext}]).
 
 -spec notification_get_ok_test(config()) -> _.
@@ -119,7 +115,7 @@ notification_get_ok_test(C) ->
             machine_id := ?MACHINE_ID,
             args := [<<"a">>, <<"b">>, <<"c">>]
         }},
-        mg_core_notification:get(?ID, notification_options(C), undefined)
+        mg_core_notification:get(notification_options(C), ?ID)
     ),
     pass_saved_cfg(C).
 
@@ -127,21 +123,21 @@ notification_get_ok_test(C) ->
 notification_search_ok_test(C) ->
     ?assertMatch(
         [{_, ?ID}],
-        mg_core_notification:search(?TS - 10, ?TS + 10, notification_options(C), undefined)
+        mg_core_notification:search(notification_options(C), ?TS - 10, ?TS + 10, inf)
     ),
     pass_saved_cfg(C).
 
 -spec notification_delete_ok_test(config()) -> _.
 notification_delete_ok_test(C) ->
     Context = get_saved_cfg(context, C),
-    ?assertMatch(ok, mg_core_notification:delete(?ID, Context, notification_options(C), undefined)),
+    ?assertEqual(ok, mg_core_notification:delete(notification_options(C), ?ID, Context)),
     pass_saved_cfg(C).
 
 -spec notification_get_not_found_test(config()) -> _.
 notification_get_not_found_test(C) ->
     ?assertMatch(
         {error, not_found},
-        mg_core_notification:get(?ID, notification_options(C), undefined)
+        mg_core_notification:get(notification_options(C), ?ID)
     ),
     pass_saved_cfg(C).
 
@@ -149,16 +145,16 @@ notification_get_not_found_test(C) ->
 notification_search_not_found_test(C) ->
     ?assertMatch(
         [],
-        mg_core_notification:search(?TS - 10, ?TS + 10, notification_options(C), undefined)
+        mg_core_notification:search(notification_options(C), ?TS - 10, ?TS + 10, inf)
     ),
     pass_saved_cfg(C).
 
 -spec notification_double_delete_test(config()) -> _.
 notification_double_delete_test(C) ->
     Context = get_saved_cfg(context, C),
-    ?assertMatch(
+    ?assertEqual(
         ok,
-        mg_core_notification:delete(?ID, Context, notification_options(C), undefined)
+        mg_core_notification:delete(notification_options(C), ?ID, Context)
     ).
 
 %%

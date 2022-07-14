@@ -207,6 +207,14 @@
     retry_action :: {wait, timeout(), mg_core_retry:strategy()} | finish
 }).
 
+%% Machine notification
+
+-record(mg_core_machine_notification_rescheduled, {
+    machine_id :: mg_core:id(),
+    notification_id :: mg_core:id(),
+    target_timestamp :: genlib_time:ts()
+}).
+
 %% Storage operations
 %% Duration is in native units
 
