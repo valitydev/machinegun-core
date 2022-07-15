@@ -50,7 +50,7 @@
 -export([call/6]).
 -export([get_machine/3]).
 -export([remove/4]).
--export([notify/4]).
+-export([notify/5]).
 
 %% mg_core_machine handler
 -behaviour(mg_core_machine).
@@ -214,12 +214,13 @@ get_machine(Options, ID, HRange) ->
 remove(Options, ID, ReqCtx, Deadline) ->
     mg_core_machine:call(machine_options(Options), ID, remove, ReqCtx, Deadline).
 
--spec notify(options(), id(), term(), mg_core_events:history_range()) -> ok.
-notify(Options, MachineID, Args, HRange) ->
+-spec notify(options(), id(), term(), mg_core_events:history_range(), request_context()) -> ok.
+notify(Options, MachineID, Args, HRange, ReqCtx) ->
     mg_core_machine:notify(
         machine_options(Options),
         MachineID,
-        notification_args_to_opaque({Args, HRange})
+        notification_args_to_opaque({Args, HRange}),
+        ReqCtx
     ).
 
 %%

@@ -89,7 +89,7 @@
 -export([simple_repair/4]).
 -export([repair/5]).
 -export([call/5]).
--export([notify/3]).
+-export([notify/4]).
 -export([send_timeout/4]).
 -export([send_notification/5]).
 -export([resume_interrupted/3]).
@@ -205,7 +205,7 @@
     {init, term()}
     | {repair, term()}
     | {call, term()}
-    | {notification, term()}
+    | {notification, mg_core_notification:id(), term()}
     | timeout
     | continuation.
 -type processor_reply_action() :: noreply | {reply, _}.
@@ -325,8 +325,8 @@ repair(Options, ID, Args, ReqCtx, Deadline) ->
 call(Options, ID, Call, ReqCtx, Deadline) ->
     call_(Options, ID, {call, Call}, ReqCtx, Deadline).
 
--spec notify(options(), mg_core:id(), mg_core_storage:opaque()) -> ok | throws().
-notify(Options, ID, Args) ->
+-spec notify(options(), mg_core:id(), mg_core_storage:opaque(), request_context()) -> ok | throws().
+notify(Options, ID, Args, ReqCtx) ->
     NotificationID = genlib:unique(),
     Timestamp = genlib_time:unow(),
     _ = mg_core_notification:put(
@@ -334,7 +334,7 @@ notify(Options, ID, Args) ->
         NotificationID,
         #{
             machine_id => ID,
-            args => Args
+            args => notification_args_to_opaque({Args, ReqCtx})
         },
         Timestamp,
         undefined
@@ -346,8 +346,9 @@ send_timeout(Options, ID, Timestamp, Deadline) ->
     call_(Options, ID, {timeout, Timestamp}, undefined, Deadline).
 
 -spec send_notification(options(), mg_core:id(), mg_core_notification:id(), term(), deadline()) -> _Resp | throws().
-send_notification(Options, ID, NotificationID, Args, Deadline) ->
-    call_(Options, ID, {notification, NotificationID, Args}, undefined, Deadline).
+send_notification(Options, ID, NotificationID, OpaqueArgs, Deadline) ->
+    {Args, ReqCtx} = opaque_to_notification_args(OpaqueArgs),
+    call_(Options, ID, {notification, NotificationID, Args}, ReqCtx, Deadline).
 
 -spec resume_interrupted(options(), mg_core:id(), deadline()) -> _Resp | throws().
 resume_interrupted(Options, ID, Deadline) ->
@@ -548,7 +549,7 @@ handle_call(Call, CallContext, ReqCtx, Deadline, S = #{storage_machine := Storag
         {{notification, _, _}, #{status := {error, _, _}}} ->
             {{reply, {error, {logic, machine_failed}}}, S};
         {{notification, NotificationID, Args}, #{status := _}} ->
-            {noreply, process_notification(NotificationID, Args, PCtx, ReqCtx, Deadline, S)}
+            {noreply, process({notification, NotificationID, Args}, PCtx, ReqCtx, Deadline, S)}
     end.
 
 -spec handle_unload(state()) -> ok.
@@ -747,39 +748,6 @@ process_simple_repair(ReqCtx, Deadline, State) ->
         State
     ).
 
--spec process_notification(
-    mg_core_notification:id(), term(), processing_context(), request_context(), deadline(), state()
-) ->
-    state().
-process_notification(NotificationID, Args, PCtx, ReqCtx, Deadline, State) ->
-    %% Check if this process already processed a notification with this id
-    %% This check does not work if the machine process was reloaded at some point (by design)
-    case is_notification_processed(NotificationID, State) of
-        false ->
-            NewState = process({notification, Args}, PCtx, ReqCtx, Deadline, State),
-            handle_notification_processed(NotificationID, NewState);
-        true ->
-            State
-    end.
-
--spec is_notification_processed(mg_core_notification:id(), state()) ->
-    boolean().
-is_notification_processed(NotificationID, #{notifications_processed := List}) ->
-    lists:member(NotificationID, List).
-
--spec handle_notification_processed(mg_core_notification:id(), state()) ->
-    state().
-handle_notification_processed(NotificationID, State) ->
-    #{storage_machine := StorageMachine, notifications_processed := ProcessedList} = State,
-    case StorageMachine of
-        %% If machine transitioned into an error state as a result of notification handling
-        %% don't record the notification as processed (so it can be retried)
-        #{status := {error, _, _}} ->
-            State;
-        _ ->
-            State#{notifications_processed => [NotificationID | ProcessedList]}
-    end.
-
 -spec emit_repaired_beat(request_context(), deadline(), state()) ->
     ok.
 emit_repaired_beat(ReqCtx, Deadline, State) ->
@@ -796,12 +764,53 @@ emit_repaired_beat(ReqCtx, Deadline, State) ->
 process(Impact, ProcessingCtx, ReqCtx, Deadline, State) ->
     RetryStrategy = get_impact_retry_strategy(Impact, Deadline, State),
     try
-        process_with_retry(Impact, ProcessingCtx, ReqCtx, Deadline, State, RetryStrategy)
+        process_impact(Impact, ProcessingCtx, ReqCtx, Deadline, State, RetryStrategy)
     catch
         Class:Reason:ST ->
             ok = do_reply_action({reply, {error, {logic, machine_failed}}}, ProcessingCtx),
             handle_exception({Class, Reason, ST}, ReqCtx, Deadline, State)
     end.
+
+%% 😠
+-spec process_impact(Impact, ProcessingCtx, ReqCtx, Deadline, State, Retry) -> State when
+    Impact :: processor_impact(),
+    ProcessingCtx :: processing_context(),
+    ReqCtx :: request_context(),
+    Deadline :: deadline(),
+    State :: state(),
+    Retry :: processor_retry().
+process_impact({notification, NotificationID, _} = Impact, PCtx, ReqCtx, Deadline, State, Retry) ->
+    %% Check if this process already processed a notification with this id
+    %% This check does not work if the machine process was reloaded at some point (by design)
+    case is_notification_processed(NotificationID, State) of
+        false ->
+            NewState = process_with_retry(Impact, PCtx, ReqCtx, Deadline, State, Retry),
+            save_notification_processed(NotificationID, NewState);
+        true ->
+            State
+    end;
+process_impact(Impact, PCtx, ReqCtx, Deadline, State, Retry) ->
+    process_with_retry(Impact, PCtx, ReqCtx, Deadline, State, Retry).
+
+-spec is_notification_processed(mg_core_notification:id(), state()) ->
+    boolean().
+is_notification_processed(NotificationID, #{notifications_processed := List}) ->
+    lists:member(NotificationID, List).
+
+-spec save_notification_processed(mg_core_notification:id(), state()) ->
+    state().
+save_notification_processed(NotificationID, State = #{notifications_processed := ProcessedList}) ->
+    State#{notifications_processed => [NotificationID | ProcessedList]}.
+
+-spec notification_args_to_opaque({mg_core_storage:opaque(), request_context()}) ->
+    mg_core_storage:opaque().
+notification_args_to_opaque({Args, RequestContext}) ->
+    [1, Args, RequestContext].
+
+-spec opaque_to_notification_args(mg_core_storage:opaque()) ->
+    {mg_core_storage:opaque(), request_context()}.
+opaque_to_notification_args([1, Args, RequestContext]) ->
+    {Args, RequestContext}.
 
 -spec process_with_retry(Impact, ProcessingCtx, ReqCtx, Deadline, State, Retry) -> State when
     Impact :: processor_impact(),
