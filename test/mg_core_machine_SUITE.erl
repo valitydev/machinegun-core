@@ -254,14 +254,14 @@ process_machine(_, _, {call, delayed_increment}, _, ?REQ_CTX, _, State) ->
     {{reply, ok}, {wait, genlib_time:unow() + 1, ?REQ_CTX, 5000}, State};
 process_machine(_, _, {call, remove}, _, ?REQ_CTX, _, State) ->
     {{reply, ok}, remove, State};
-process_machine(_, _, {notification, _, [<<"kill_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
+process_machine(_, _, {notification, [<<"kill_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
     case State of
         [_, Arg] ->
             _ = exit(1);
         _ ->
             {{reply, ok}, sleep, State}
     end;
-process_machine(_, _, {notification, _, Arg}, _, ?REQ_CTX, _, [TestKey, TestValue]) when is_integer(Arg) ->
+process_machine(_, _, {notification, Arg}, _, ?REQ_CTX, _, [TestKey, TestValue]) when is_integer(Arg) ->
     {{reply, ok}, sleep, [TestKey, TestValue + Arg]};
 process_machine(_, _, timeout, _, ?REQ_CTX, _, [TestKey, TestValue]) ->
     {noreply, sleep, [TestKey, TestValue + 1]};
