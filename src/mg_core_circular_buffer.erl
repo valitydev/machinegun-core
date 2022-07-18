@@ -42,12 +42,12 @@
 %%
 
 -spec new(UpperBound :: pos_integer()) ->
-    t(_).
+    t(_) | no_return().
 new(UpperBound) ->
     new(UpperBound, UpperBound - 1).
 
 -spec new(UpperBound :: pos_integer(), LowerBound :: non_neg_integer()) ->
-    t(_).
+    t(_) | no_return().
 new(UpperBound, LowerBound) when UpperBound > 0, LowerBound >= 0, LowerBound < UpperBound ->
     {0, {UpperBound, LowerBound}, []};
 new(_, _) ->

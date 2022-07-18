@@ -20,6 +20,8 @@
 
 %% Types
 
+-export([build_task/5]).
+
 -behaviour(mg_core_queue_scanner).
 -export([init/1]).
 -export([search_tasks/3]).
@@ -32,13 +34,15 @@
 -type seconds() :: non_neg_integer().
 -type milliseconds() :: non_neg_integer().
 -type options() :: #{
+    scheduler_id := mg_core_scheduler:id(),
     pulse := mg_core_pulse:handler(),
     machine := mg_core_machine:options(),
     notification := mg_core_notification:options(),
     % how many seconds behind real time we are
     processing_timeout => timeout(),
     min_scan_delay => milliseconds(),
-    handicap => seconds(),
+    scan_handicap => seconds(),
+    scan_cutoff => seconds(),
     reschedule_time => seconds()
 }.
 
@@ -61,12 +65,34 @@
 -type scan_delay() :: mg_core_queue_scanner:scan_delay().
 -type scan_limit() :: mg_core_queue_scanner:scan_limit().
 
--define(DEFAULT_PROCESSING_TIMEOUT, 1000).
+-define(DEFAULT_PROCESSING_TIMEOUT, 5000).
+-define(DEFAULT_SCAN_HANDICAP, 10).
+% 1 month
+-define(DEFAULT_SCAN_CUTOFF, 30 * 24 * 60 * 60).
 -define(DEFAULT_RESCHEDULE_TIME, 60).
 
 %%
 %% API
 %%
+
+-spec build_task(
+    NotificationID :: mg_core_notification:id(),
+    MachineID :: mg_core:id(),
+    Timestamp :: genlib_time:ts(),
+    Context :: mg_core_notification:context(),
+    Args :: mg_core_storage:opaque()
+) ->
+    task().
+build_task(NotificationID, MachineID, Timestamp, Context, Args) ->
+    #{
+        id => NotificationID,
+        target_time => Timestamp,
+        machine_id => MachineID,
+        payload => #{
+            context => Context,
+            args => Args
+        }
+    }.
 
 -spec init(options()) -> {ok, state()}.
 init(_Options) ->
@@ -75,9 +101,10 @@ init(_Options) ->
 -spec search_tasks(options(), scan_limit(), state()) -> {{scan_delay(), [task()]}, state()}.
 search_tasks(Options, Limit, State = #state{}) ->
     CurrentTs = mg_core_queue_task:current_time(),
-    Handicap = maps:get(handicap, Options, 10),
-    TFrom = 1,
-    TTo = CurrentTs - Handicap,
+    ScanHandicap = maps:get(scan_handicap, Options, ?DEFAULT_SCAN_HANDICAP),
+    ScanCutoff = maps:get(scan_cutoff, Options, ?DEFAULT_SCAN_CUTOFF),
+    TFrom = CurrentTs - ScanHandicap - ScanCutoff,
+    TTo = CurrentTs - ScanHandicap,
     {Notifications, Continuation} = mg_core_notification:search(
         notification_options(Options),
         TFrom,
@@ -91,11 +118,10 @@ search_tasks(Options, Limit, State = #state{}) ->
         CurrentTs,
         Notifications
     ),
-    % FIXME sort this out
     MinDelay = maps:get(min_scan_delay, Options, 1000),
     OptimalDelay =
         case Continuation of
-            undefined -> seconds_to_delay(Handicap);
+            undefined -> seconds_to_delay(ScanHandicap);
             _Other -> seconds_to_delay(LastTs - CurrentTs)
         end,
     Delay = erlang:max(OptimalDelay, MinDelay),
@@ -104,6 +130,7 @@ search_tasks(Options, Limit, State = #state{}) ->
 -spec execute_task(options(), task()) -> ok.
 execute_task(Options, #{id := NotificationID, machine_id := MachineID, payload := Payload}) ->
     Timeout = maps:get(processing_timeout, Options, ?DEFAULT_PROCESSING_TIMEOUT),
+    % SchedulerID = maps:get(scheduler_id, Options),
     Deadline = mg_core_deadline:from_timeout(Timeout),
     #{args := Args, context := Context} = Payload,
     try mg_core_machine:send_notification(machine_options(Options), MachineID, NotificationID, Args, Deadline) of
@@ -112,23 +139,15 @@ execute_task(Options, #{id := NotificationID, machine_id := MachineID, payload :
             Result
     catch
         Error:Reason:Stacktrace ->
-            Reschedule = maps:get(reschedule_time, Options, ?DEFAULT_RESCHEDULE_TIME),
-            NewTimestamp = Reschedule + genlib_time:unow(),
-            _ = mg_core_notification:put(
-                notification_options(Options),
-                NotificationID,
-                #{
-                    machine_id => MachineID,
-                    args => Args
-                },
-                NewTimestamp,
-                Context
-            ),
-            ok = emit_beat(Options, #mg_core_machine_notification_rescheduled{
-                machine_id = MachineID,
-                notification_id = NotificationID,
-                target_timestamp = NewTimestamp
-            }),
+            % TODO: better error handling
+            % Reschedule = maps:get(reschedule_time, Options, ?DEFAULT_RESCHEDULE_TIME),
+            % NewTimestamp = Reschedule + genlib_time:unow(),
+            % ok = mg_core_scheduler:send_task(SchedulerID, Task#{target_time => NewTimestamp}),
+            % ok = emit_beat(Options, #mg_core_machine_notification_rescheduled{
+            %     machine_id = MachineID,
+            %     notification_id = NotificationID,
+            %     target_timestamp = NewTimestamp
+            % }),
             erlang:raise(Error, Reason, Stacktrace)
     end.
 
@@ -157,16 +176,8 @@ create_task(Options, NotificationID, Timestamp) ->
         notification_options(Options),
         NotificationID
     ),
-    #{
-        id => NotificationID,
-        target_time => Timestamp,
-        machine_id => MachineID,
-        payload => #{
-            context => Context,
-            args => Args
-        }
-    }.
+    build_task(NotificationID, MachineID, Timestamp, Context, Args).
 
--spec emit_beat(options(), mg_core_pulse:beat()) -> ok.
-emit_beat(Options, Beat) ->
-    ok = mg_core_pulse:handle_beat(maps:get(pulse, Options, undefined), Beat).
+% -spec emit_beat(options(), mg_core_pulse:beat()) -> ok.
+% emit_beat(Options, Beat) ->
+%     ok = mg_core_pulse:handle_beat(maps:get(pulse, Options, undefined), Beat).

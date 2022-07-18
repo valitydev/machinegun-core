@@ -122,7 +122,6 @@ simple_test(C) ->
 
     % simple notification
     ok = mg_core_machine:notify(Options, ID, 40, ?REQ_CTX),
-    2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
     true = mg_core_ct_helper:assert_poll_minimum_time(
         mg_core_ct_helper:poll_for_value(
             fun() ->
@@ -171,19 +170,14 @@ simple_test(C) ->
         Options, ID, repair_arg, ?REQ_CTX, mg_core_deadline:default()
     ),
     %% machine is repaired but notification has not retried yet
-    ok = timer:sleep(2000),
     42 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
     %% wait for notification to kill the machine a second time (it re_tried)
-    true = mg_core_ct_helper:assert_poll_minimum_time(
-        mg_core_ct_helper:poll_for_exception(
-            fun() ->
-                mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
-            end,
-            {logic, machine_failed},
-            5000
-        ),
-        %% at least 1 second of notification queue handicap
-        1000
+    {ok, _} = mg_core_ct_helper:poll_for_exception(
+        fun() ->
+            mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
+        end,
+        {logic, machine_failed},
+        5000
     ),
     repaired = mg_core_machine:repair(
         Options, ID, repair_arg, ?REQ_CTX, mg_core_deadline:default()
@@ -300,14 +294,15 @@ automaton_options(C) ->
             pulse => ?MODULE,
             storage => mg_core_storage_memory
         },
-        notification_scan_handicap => 1,
-        notification_reschedule_time => 2,
         pulse => ?MODULE,
         schedulers => #{
             timers => Scheduler,
             timers_retries => Scheduler,
             overseer => Scheduler,
-            notification => Scheduler
+            notification => #{
+                scan_handicap => 1,
+                reschedule_time => 2
+            }
         }
     }.
 

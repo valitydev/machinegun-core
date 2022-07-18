@@ -450,13 +450,14 @@ events_machine_options(Base, StorageOptions, ProcessorOptions, NS) ->
                 pulse => ?MODULE,
                 storage => mg_core_storage_memory
             },
-            notification_scan_handicap => 2,
             pulse => Pulse,
             schedulers => #{
                 timers => Scheduler,
                 timers_retries => Scheduler,
                 overseer => #{},
-                notification => Scheduler
+                notification => #{
+                    scan_handicap => 2
+                }
             }
         },
         events_storage => mg_core_ct_helper:build_storage(<<NS/binary, "_events">>, Storage)
