@@ -344,7 +344,7 @@ notify(Options, ID, Args, ReqCtx) ->
         Timestamp,
         undefined
     ),
-    ok = try_send_notification_task(Options, NotificationID, Args, ID, Context, Timestamp),
+    ok = try_send_notification_task(Options, NotificationID, OpaqueArgs, ID, Context, Timestamp),
     ok.
 
 -spec send_timeout(options(), mg_core:id(), genlib_time:ts(), deadline()) -> _Resp | throws().

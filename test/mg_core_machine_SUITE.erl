@@ -120,25 +120,11 @@ simple_test(C) ->
     ok = timer:sleep(2000),
     2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
 
-    % simple notification
-    ok = mg_core_machine:notify(Options, ID, 40, ?REQ_CTX),
-    true = mg_core_ct_helper:assert_poll_minimum_time(
-        mg_core_ct_helper:poll_for_value(
-            fun() ->
-                mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
-            end,
-            42,
-            3000
-        ),
-        %% at least 1 second of notification queue handicap
-        1000
-    ),
-
     % call fail/simple_repair
     {logic, machine_failed} =
         (catch mg_core_machine:call(Options, ID, fail, ?REQ_CTX, mg_core_deadline:default())),
     ok = mg_core_machine:simple_repair(Options, ID, ?REQ_CTX, mg_core_deadline:default()),
-    42 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+    2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
 
     % call fail/repair
     {logic, machine_failed} =
@@ -150,42 +136,7 @@ simple_test(C) ->
         ?REQ_CTX,
         mg_core_deadline:default()
     ),
-    42 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
-
-    % fail with notification, repair, retry notification
-    ok = mg_core_machine:notify(Options, ID, [<<"kill_when">>, 42], ?REQ_CTX),
-    %% wait for notification to kill the machine
-    true = mg_core_ct_helper:assert_poll_minimum_time(
-        mg_core_ct_helper:poll_for_exception(
-            fun() ->
-                mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
-            end,
-            {logic, machine_failed},
-            5000
-        ),
-        %% at least 1 second of notification queue handicap
-        1000
-    ),
-    repaired = mg_core_machine:repair(
-        Options, ID, repair_arg, ?REQ_CTX, mg_core_deadline:default()
-    ),
-    %% machine is repaired but notification has not retried yet
-    42 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
-    %% wait for notification to kill the machine a second time (it re_tried)
-    {ok, _} = mg_core_ct_helper:poll_for_exception(
-        fun() ->
-            mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
-        end,
-        {logic, machine_failed},
-        5000
-    ),
-    repaired = mg_core_machine:repair(
-        Options, ID, repair_arg, ?REQ_CTX, mg_core_deadline:default()
-    ),
-    ok = mg_core_machine:call(Options, ID, increment, ?REQ_CTX, mg_core_deadline:default()),
-    %% notification no longer kills the machine
-    ok = timer:sleep(3000),
-    43 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+    2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
 
     % call fail/repair fail/repair
     {logic, machine_failed} =
@@ -207,7 +158,7 @@ simple_test(C) ->
             ?REQ_CTX,
             mg_core_deadline:default()
         )),
-    43 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
+    2 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
 
     ok = mg_core_machine:call(Options, ID, remove, ?REQ_CTX, mg_core_deadline:default()),
 
@@ -248,15 +199,6 @@ process_machine(_, _, {call, delayed_increment}, _, ?REQ_CTX, _, State) ->
     {{reply, ok}, {wait, genlib_time:unow() + 1, ?REQ_CTX, 5000}, State};
 process_machine(_, _, {call, remove}, _, ?REQ_CTX, _, State) ->
     {{reply, ok}, remove, State};
-process_machine(_, _, {notification, [<<"kill_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
-    case State of
-        [_, Arg] ->
-            _ = exit(1);
-        _ ->
-            {{reply, ok}, sleep, State}
-    end;
-process_machine(_, _, {notification, Arg}, _, ?REQ_CTX, _, [TestKey, TestValue]) when is_integer(Arg) ->
-    {{reply, ok}, sleep, [TestKey, TestValue + Arg]};
 process_machine(_, _, timeout, _, ?REQ_CTX, _, [TestKey, TestValue]) ->
     {noreply, sleep, [TestKey, TestValue + 1]};
 process_machine(_, _, {repair, repair_arg}, _, ?REQ_CTX, _, [TestKey, TestValue]) ->
@@ -298,12 +240,7 @@ automaton_options(C) ->
         schedulers => #{
             timers => Scheduler,
             timers_retries => Scheduler,
-            overseer => Scheduler,
-            notification => #{
-                target_cutoff => 1,
-                scan_handicap => 1,
-                reschedule_time => 2
-            }
+            overseer => Scheduler
         }
     }.
 
