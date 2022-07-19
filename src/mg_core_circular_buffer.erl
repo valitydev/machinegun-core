@@ -85,8 +85,6 @@ pick_n(Buffer, Amount) ->
 -spec pick_n(Init :: list(), Amount :: non_neg_integer(), Acc :: list()) -> Result :: list().
 pick_n(_Buffer, 0, Acc) ->
     lists:reverse(Acc);
-pick_n([], _, Acc) ->
-    lists:reverse(Acc);
 pick_n([H | T], Amount, Acc) ->
     pick_n(T, Amount - 1, [H | Acc]).
 
@@ -103,17 +101,17 @@ pick_n([H | T], Amount, Acc) ->
 
 circular_buffer_new_test() ->
     ?assertEqual({0, {20, 19}, []}, new(20)),
-    ?assertError(badarg, new(0)),
+    ?assertError(badarg, apply(?MODULE, new, [0])),
     ?assertEqual({0, {20, 10}, []}, new(20, 10)),
-    ?assertError(badarg, new(0, 0)),
-    ?assertError(badarg, new(10, 10)),
-    ?assertError(badarg, new(20, 30)).
+    ?assertError(badarg, apply(?MODULE, new, [0, 0])),
+    ?assertError(badarg, apply(?MODULE, new, [10, 10])),
+    ?assertError(badarg, apply(?MODULE, new, [20, 30])).
 
 circular_buffer_push_test() ->
-    Buffer = new(20),
-    ?assertMatch({0, _, []}, Buffer),
+    Buffer = new(3),
     ?assertMatch({1, _, [abc]}, push(Buffer, abc)),
-    ?assertMatch({2, _, [bcd, abc]}, push(push(Buffer, abc), bcd)).
+    ?assertMatch({2, _, [bcd, abc]}, push(push(Buffer, abc), bcd)),
+    ?assertMatch({3, _, [cbd, bcd, abc]}, push(push(push(Buffer, abc), bcd), cbd)).
 
 circular_buffer_push_overflow_test() ->
     Buffer0 = new(2),

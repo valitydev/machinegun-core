@@ -209,10 +209,11 @@
 
 %% Machine notification
 
--record(mg_core_machine_notification_rescheduled, {
+-record(mg_core_machine_notification_failed, {
     machine_id :: mg_core:id(),
     notification_id :: mg_core:id(),
-    target_timestamp :: genlib_time:ts()
+    exception :: mg_core_utils:exception(),
+    action :: fail_permanently | ignore | {reschedule, genlib_time:ts()}
 }).
 
 %% Storage operations

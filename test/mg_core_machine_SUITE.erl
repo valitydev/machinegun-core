@@ -300,6 +300,7 @@ automaton_options(C) ->
             timers_retries => Scheduler,
             overseer => Scheduler,
             notification => #{
+                target_cutoff => 1,
                 scan_handicap => 1,
                 reschedule_time => 2
             }

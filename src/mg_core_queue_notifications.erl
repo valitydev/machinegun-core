@@ -65,6 +65,8 @@
 -type scan_delay() :: mg_core_queue_scanner:scan_delay().
 -type scan_limit() :: mg_core_queue_scanner:scan_limit().
 
+-type fail_action() :: fail_permanently | ignore | {reschedule, target_time()}.
+
 -define(DEFAULT_PROCESSING_TIMEOUT, 5000).
 -define(DEFAULT_SCAN_HANDICAP, 10).
 % 1 month
@@ -128,9 +130,9 @@ search_tasks(Options, Limit, State = #state{}) ->
     {{Delay, Tasks}, State}.
 
 -spec execute_task(options(), task()) -> ok.
-execute_task(Options, #{id := NotificationID, machine_id := MachineID, payload := Payload}) ->
+execute_task(Options, #{id := NotificationID, machine_id := MachineID, payload := Payload} = Task) ->
     Timeout = maps:get(processing_timeout, Options, ?DEFAULT_PROCESSING_TIMEOUT),
-    % SchedulerID = maps:get(scheduler_id, Options),
+    SchedulerID = maps:get(scheduler_id, Options),
     Deadline = mg_core_deadline:from_timeout(Timeout),
     #{args := Args, context := Context} = Payload,
     try mg_core_machine:send_notification(machine_options(Options), MachineID, NotificationID, Args, Deadline) of
@@ -138,17 +140,19 @@ execute_task(Options, #{id := NotificationID, machine_id := MachineID, payload :
             ok = mg_core_notification:delete(notification_options(Options), NotificationID, Context),
             Result
     catch
-        Error:Reason:Stacktrace ->
-            % TODO: better error handling
-            % Reschedule = maps:get(reschedule_time, Options, ?DEFAULT_RESCHEDULE_TIME),
-            % NewTimestamp = Reschedule + genlib_time:unow(),
-            % ok = mg_core_scheduler:send_task(SchedulerID, Task#{target_time => NewTimestamp}),
-            % ok = emit_beat(Options, #mg_core_machine_notification_rescheduled{
-            %     machine_id = MachineID,
-            %     notification_id = NotificationID,
-            %     target_timestamp = NewTimestamp
-            % }),
-            erlang:raise(Error, Reason, Stacktrace)
+        throw:Reason:Stacktrace ->
+            Action = task_fail_action(Options, Reason),
+            _ =
+                case Action of
+                    fail_permanently ->
+                        ok = mg_core_notification:delete(notification_options(Options), NotificationID, Context);
+                    {reschedule, NewTargetTime} ->
+                        ok = mg_core_scheduler:send_task(SchedulerID, Task#{target_time => NewTargetTime});
+                    ignore ->
+                        ok
+                end,
+            ok = emit_task_failed_beat(Options, MachineID, NotificationID, {throw, Reason, Stacktrace}, Action),
+            erlang:raise(throw, Reason, Stacktrace)
     end.
 
 %%
@@ -178,6 +182,36 @@ create_task(Options, NotificationID, Timestamp) ->
     ),
     build_task(NotificationID, MachineID, Timestamp, Context, Args).
 
-% -spec emit_beat(options(), mg_core_pulse:beat()) -> ok.
-% emit_beat(Options, Beat) ->
-%     ok = mg_core_pulse:handle_beat(maps:get(pulse, Options, undefined), Beat).
+-spec task_fail_action(options(), mg_core_machine:thrown_error()) -> fail_action().
+task_fail_action(_Options, {logic, machine_not_found}) ->
+    fail_permanently;
+task_fail_action(Options, {transient, _}) ->
+    {reschedule, get_reschedule_time(Options)};
+task_fail_action(Options, {timeout, _}) ->
+    {reschedule, get_reschedule_time(Options)};
+task_fail_action(_Options, _) ->
+    ignore.
+
+-spec get_reschedule_time(options()) -> target_time().
+get_reschedule_time(Options) ->
+    Reschedule = maps:get(reschedule_time, Options, ?DEFAULT_RESCHEDULE_TIME),
+    Reschedule + genlib_time:unow().
+
+-spec emit_task_failed_beat(
+    options(),
+    mg_core:id(),
+    mg_core_notification:id(),
+    mg_core_utils:exception(),
+    fail_action()
+) -> ok.
+emit_task_failed_beat(Options, MachineID, NotificationID, Exception, Action) ->
+    ok = emit_beat(Options, #mg_core_machine_notification_failed{
+        machine_id = MachineID,
+        notification_id = NotificationID,
+        exception = Exception,
+        action = Action
+    }).
+
+-spec emit_beat(options(), mg_core_pulse:beat()) -> ok.
+emit_beat(Options, Beat) ->
+    ok = mg_core_pulse:handle_beat(maps:get(pulse, Options, undefined), Beat).

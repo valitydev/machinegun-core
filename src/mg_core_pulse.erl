@@ -60,7 +60,7 @@
     | #mg_core_machine_process_finished{}
     | #mg_core_machine_process_transient_error{}
     % Machine notification
-    | #mg_core_machine_notification_rescheduled{}
+    | #mg_core_machine_notification_failed{}
     % Machine worker handling
     | #mg_core_worker_call_attempt{}
     | #mg_core_worker_start_attempt{}
