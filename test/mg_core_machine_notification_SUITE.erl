@@ -146,6 +146,8 @@ retry_after_fail_test(C) ->
         {logic, machine_failed},
         1000
     ),
+    %% test notification failing to retry
+    _ = timer:sleep(2000),
     repaired = mg_core_machine:repair(Options, ID, repair_arg, ?REQ_CTX, mg_core_deadline:default()),
     %% machine is repaired but notification has not retried yet
     0 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()),
