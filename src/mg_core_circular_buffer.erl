@@ -53,40 +53,40 @@ new(UpperBound, LowerBound) when UpperBound > 0, LowerBound >= 0, LowerBound < U
 new(_, _) ->
     error(badarg).
 
--spec push(t(T), T) ->
+-spec push(T, t(T)) ->
     t(T).
-push({Size, {UpperBound, _} = Bs, Buffer}, Element) when Size < UpperBound ->
+push(Element, {Size, {UpperBound, _} = Bs, Buffer}) when Size < UpperBound ->
     {Size + 1, Bs, [Element | Buffer]};
-push({Size, {UpperBound, LowerBound} = Bs, Buffer}, Element) when Size =:= UpperBound ->
-    BufferShrunk = rebound(Buffer, Bs),
+push(Element, {Size, {UpperBound, LowerBound} = Bs, Buffer}) when Size =:= UpperBound ->
+    BufferShrunk = rebound(Bs, Buffer),
     {LowerBound + 1, Bs, [Element | BufferShrunk]}.
 
--spec member(t(T), T) ->
+-spec member(T, t(T)) ->
     boolean().
-member({_, _, Buffer}, Element) ->
+member(Element, {_, _, Buffer}) ->
     lists:member(Element, Buffer).
 
 %%
 %% Internal Functions
 %%
 
--spec rebound(Buffer :: list(), bounds()) -> Result :: list().
-rebound(Buffer, {UpperBound, LowerBound}) when LowerBound =:= UpperBound - 1 ->
+-spec rebound(bounds(), Buffer :: list()) -> Result :: list().
+rebound({UpperBound, LowerBound}, Buffer) when LowerBound =:= UpperBound - 1 ->
     % lists:reverse(tl(lists:reverse(Buffer))),
     lists:droplast(Buffer);
-rebound(Buffer, {_, LowerBound}) ->
-    pick_n(Buffer, LowerBound).
+rebound({_, LowerBound}, Buffer) ->
+    pick_n(LowerBound, Buffer).
 
--spec pick_n(Init :: list(), Amount :: non_neg_integer()) -> Result :: list().
+-spec pick_n(Amount :: non_neg_integer(), Init :: list()) -> Result :: list().
 % Basically what lists:droplast/1 does
-pick_n(Buffer, Amount) ->
-    pick_n(Buffer, Amount, []).
+pick_n(Amount, Buffer) ->
+    pick_n(Amount, Buffer, []).
 
--spec pick_n(Init :: list(), Amount :: non_neg_integer(), Acc :: list()) -> Result :: list().
-pick_n(_Buffer, 0, Acc) ->
+-spec pick_n(Amount :: non_neg_integer(), Init :: list(), Acc :: list()) -> Result :: list().
+pick_n(0, _Buffer, Acc) ->
     lists:reverse(Acc);
-pick_n([H | T], Amount, Acc) ->
-    pick_n(T, Amount - 1, [H | Acc]).
+pick_n(Amount, [H | T], Acc) ->
+    pick_n(Amount - 1, T, [H | Acc]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -109,19 +109,17 @@ circular_buffer_new_test() ->
 
 circular_buffer_push_test() ->
     Buffer = new(3),
-    ?assertMatch({1, _, [abc]}, push(Buffer, abc)),
-    ?assertMatch({2, _, [bcd, abc]}, push(push(Buffer, abc), bcd)),
-    ?assertMatch({3, _, [cbd, bcd, abc]}, push(push(push(Buffer, abc), bcd), cbd)).
+    ?assertMatch({1, _, [abc]}, push(abc, Buffer)),
+    ?assertMatch({2, _, [bcd, abc]}, lists:foldl(fun push/2, Buffer, [abc, bcd])),
+    ?assertMatch({3, _, [cbd, bcd, abc]}, lists:foldl(fun push/2, Buffer, [abc, bcd, cbd])).
 
 circular_buffer_push_overflow_test() ->
-    Buffer0 = new(2),
-    ?assertMatch({2, _, [cbd, bcd]}, push(push(push(Buffer0, abc), bcd), cbd)),
-    Buffer1 = new(4, 1),
-    ?assertMatch({2, _, [xyz, bde]}, push(push(push(push(push(Buffer1, abc), bcd), cbd), bde), xyz)).
+    ?assertMatch({2, _, [cbd, bcd]}, lists:foldl(fun push/2, new(2), [abc, bcd, cbd])),
+    ?assertMatch({2, _, [xyz, bde]}, lists:foldl(fun push/2, new(4, 1), [abc, bcd, cbd, bde, xyz])).
 
 circular_buffer_member_test() ->
-    Buffer = push(push(push(new(3), abc), bcd), cbd),
-    ?assertEqual(true, member(Buffer, bcd)),
-    ?assertEqual(false, member(Buffer, xyz)).
+    Buffer = lists:foldl(fun push/2, new(3), [abc, bcd, cbd]),
+    ?assertEqual(true, member(bcd, Buffer)),
+    ?assertEqual(false, member(xyz, Buffer)).
 
 -endif.

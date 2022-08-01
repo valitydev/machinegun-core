@@ -304,7 +304,7 @@ process_machine_(
 process_machine_(
     Options,
     ID,
-    {notification, OpaqueArgs},
+    {notification, _, OpaqueArgs},
     _PCtx,
     ReqCtx,
     Deadline,

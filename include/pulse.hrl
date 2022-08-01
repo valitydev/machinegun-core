@@ -209,11 +209,23 @@
 
 %% Machine notification
 
--record(mg_core_machine_notification_failed, {
+-record(mg_core_machine_notification_created, {
     machine_id :: mg_core:id(),
     notification_id :: mg_core:id(),
-    exception :: mg_core_utils:exception(),
-    action :: fail_permanently | ignore | {reschedule, genlib_time:ts()}
+    target_timestamp :: genlib_time:ts()
+}).
+
+-record(mg_core_machine_notification_rescheduled, {
+    machine_id :: mg_core:id(),
+    notification_id :: mg_core:id(),
+    reason :: mg_core_utils:exception(),
+    new_target_timestamp :: genlib_time:ts()
+}).
+
+-record(mg_core_machine_notification_deleted, {
+    machine_id :: mg_core:id(),
+    notification_id :: mg_core:id(),
+    reason :: finished | {failed, mg_core_utils:exception()}
 }).
 
 %% Storage operations

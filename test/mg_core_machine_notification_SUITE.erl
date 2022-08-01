@@ -129,8 +129,7 @@ invalid_machine_id_test(C) ->
     ok = mg_core_machine:notify(Options, FakeID, 42, ?REQ_CTX),
     [_] = search_notifications_for_machine(FakeID),
     %% An impossible-to-satisfy notification gets deleted
-    _ = timer:sleep(1000),
-    [] = search_notifications_for_machine(FakeID).
+    ok = await_notification_deleted(FakeID, 1000).
 
 -spec retry_after_fail_test(config()) -> _.
 retry_after_fail_test(C) ->
@@ -161,8 +160,7 @@ retry_after_fail_test(C) ->
     ),
     repaired = mg_core_machine:repair(Options, ID, repair_arg, ?REQ_CTX, mg_core_deadline:default()),
     ok = mg_core_machine:call(Options, ID, increment, ?REQ_CTX, mg_core_deadline:default()),
-    %% notification no longer kills the machine
-    ok = timer:sleep(3000),
+    ok = await_notification_deleted(ID, 3000),
     1 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()).
 
 %%
@@ -190,14 +188,14 @@ process_machine(_, _, {call, get}, _, ?REQ_CTX, _, TestValue) ->
     {{reply, TestValue}, sleep, TestValue};
 process_machine(_, _, {call, increment}, _, ?REQ_CTX, _, TestValue) ->
     {{reply, ok}, sleep, TestValue + 1};
-process_machine(_, _, {notification, [<<"fail_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
+process_machine(_, _, {notification, _, [<<"fail_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
     case State of
         Arg ->
             _ = exit(1);
         _ ->
             {{reply, ok}, sleep, State}
     end;
-process_machine(_, _, {notification, Arg}, _, ?REQ_CTX, _, TestValue) when is_integer(Arg) ->
+process_machine(_, _, {notification, _, Arg}, _, ?REQ_CTX, _, TestValue) when is_integer(Arg) ->
     {{reply, ok}, sleep, TestValue + Arg};
 process_machine(_, _, {repair, repair_arg}, _, ?REQ_CTX, _, TestValue) ->
     {{reply, repaired}, sleep, TestValue}.
@@ -217,6 +215,18 @@ search_notifications_for_machine(MachineID) ->
         end,
         Found
     ).
+
+-spec await_notification_deleted(binary(), integer()) -> ok | {error, timeout}.
+await_notification_deleted(_, Timeout) when Timeout =< 0 ->
+    {error, timeout};
+await_notification_deleted(ID, Timeout) ->
+    case search_notifications_for_machine(ID) of
+        [] ->
+            ok;
+        _ ->
+            _ = timer:sleep(100),
+            await_notification_deleted(ID, Timeout - 100)
+    end.
 
 -spec start() -> ignore.
 start() ->
@@ -250,7 +260,6 @@ automaton_options(_C) ->
             timers_retries => Scheduler,
             overseer => Scheduler,
             notification => #{
-                target_cutoff => 1,
                 scan_handicap => 1,
                 reschedule_time => 2
             }

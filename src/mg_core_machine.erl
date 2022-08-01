@@ -209,7 +209,7 @@
     {init, term()}
     | {repair, term()}
     | {call, term()}
-    | {notification, term()}
+    | {notification, mg_core_notification:id(), term()}
     | timeout
     | continuation.
 -type processor_reply_action() :: noreply | {reply, _}.
@@ -331,7 +331,7 @@ call(Options, ID, Call, ReqCtx, Deadline) ->
 
 -spec notify(options(), mg_core:id(), mg_core_storage:opaque(), request_context()) -> ok | throws().
 notify(Options, ID, Args, ReqCtx) ->
-    NotificationID = genlib:unique(),
+    NotificationID = generate_snowflake_id(),
     Timestamp = genlib_time:unow(),
     OpaqueArgs = notification_args_to_opaque({Args, ReqCtx}),
     Context = mg_core_notification:put(
@@ -344,7 +344,7 @@ notify(Options, ID, Args, ReqCtx) ->
         Timestamp,
         undefined
     ),
-    ok = try_send_notification_task(Options, NotificationID, OpaqueArgs, ID, Context, Timestamp),
+    ok = send_notification_task(Options, NotificationID, OpaqueArgs, ID, Context, Timestamp),
     ok.
 
 -spec send_timeout(options(), mg_core:id(), genlib_time:ts(), deadline()) -> _Resp | throws().
@@ -791,8 +791,7 @@ process_notification(NotificationID, Args, PCtx, ReqCtx, Deadline, State) ->
     %% This check does not work if the machine process was reloaded at some point (by design)
     case is_notification_processed(NotificationID, State) of
         false ->
-            NewState = process({notification, Args}, PCtx, ReqCtx, Deadline, State),
-            handle_notification_processed(NotificationID, NewState);
+            process({notification, NotificationID, Args}, PCtx, ReqCtx, Deadline, State);
         true ->
             ok = do_reply_action({reply, ok}, PCtx),
             State
@@ -801,20 +800,7 @@ process_notification(NotificationID, Args, PCtx, ReqCtx, Deadline, State) ->
 -spec is_notification_processed(mg_core_notification:id(), state()) ->
     boolean().
 is_notification_processed(NotificationID, #{notifications_processed := Buffer}) ->
-    mg_core_circular_buffer:member(Buffer, NotificationID).
-
--spec handle_notification_processed(mg_core_notification:id(), state()) ->
-    state().
-handle_notification_processed(NotificationID, State) ->
-    #{notifications_processed := Buffer, storage_machine := StorageMachine} = State,
-    case StorageMachine of
-        #{status := {error, _, _}} ->
-            % Machine has transition into an error state as a result of notification processing
-            % Don't mark the notification as processed
-            State;
-        _ ->
-            State#{notifications_processed => mg_core_circular_buffer:push(Buffer, NotificationID)}
-    end.
+    mg_core_circular_buffer:member(NotificationID, Buffer).
 
 -spec notification_args_to_opaque({mg_core_storage:opaque(), request_context()}) ->
     mg_core_storage:opaque().
@@ -826,24 +812,16 @@ notification_args_to_opaque({Args, RequestContext}) ->
 opaque_to_notification_args([1, Args, RequestContext]) ->
     {Args, RequestContext}.
 
--spec try_send_notification_task(Options, NotificationID, Args, MachineID, Context, TargetTime) -> ok when
+-spec send_notification_task(Options, NotificationID, Args, MachineID, Context, TargetTime) -> ok when
     Options :: options(),
     NotificationID :: mg_core_notification:id(),
     Args :: mg_core_storage:opaque(),
     MachineID :: mg_core:id(),
     Context :: mg_core_notification:context(),
     TargetTime :: genlib_time:ts().
-try_send_notification_task(Options, NotificationID, Args, MachineID, Context, TargetTime) ->
-    case get_scheduler_ref(notification, Options) of
-        SchedulerRef when SchedulerRef =/= undefined ->
-            try_send_scheduler_task(
-                fun(ScheduledTime) ->
-                    mg_core_queue_notifications:build_task(NotificationID, MachineID, ScheduledTime, Context, Args)
-                end,
-                SchedulerRef,
-                TargetTime
-            )
-    end.
+send_notification_task(Options, NotificationID, Args, MachineID, Context, TargetTime) ->
+    Task = mg_core_queue_notifications:build_task(NotificationID, MachineID, TargetTime, Context, Args),
+    mg_core_scheduler:send_task(scheduler_id(notification, Options), Task).
 
 -spec process_with_retry(Impact, ProcessingCtx, ReqCtx, Deadline, State, Retry) -> State when
     Impact :: processor_impact(),
@@ -960,7 +938,7 @@ process_unsafe(
     ok = emit_post_process_beats(Impact, ReqCtx, Deadline, ProcessDuration, State),
     ok = try_suicide(State, ReqCtx),
     NewStorageMachine0 = StorageMachine#{state := NewMachineState},
-    NewState =
+    NewState0 =
         case Action of
             {continue, _} ->
                 NewStorageMachine = NewStorageMachine0#{status := {processing, ReqCtx}},
@@ -978,6 +956,14 @@ process_unsafe(
                 remove_from_storage(ReqCtx, Deadline, State)
         end,
     ok = do_reply_action(wrap_reply_action(ok, ReplyAction), ProcessingCtx),
+    NewState1 =
+        case Impact of
+            {notification, NotificationID, _} ->
+                %% Count notification as processed even if it wants to do a continuation
+                handle_notification_processed(NotificationID, NewState0);
+            _ ->
+                NewState0
+        end,
     case Action of
         {continue, NewProcessingSubState} ->
             % продолжение обработки машины делается без дедлайна
@@ -987,11 +973,21 @@ process_unsafe(
                 ProcessingCtx#{state := NewProcessingSubState},
                 ReqCtx,
                 undefined,
-                NewState
+                NewState1
             );
         _ ->
-            NewState
+            NewState1
     end.
+
+-spec generate_snowflake_id() -> binary().
+generate_snowflake_id() ->
+    <<ID:64>> = snowflake:new(),
+    genlib_format:format_int_base(ID, 61).
+
+-spec handle_notification_processed(mg_core_notification:id(), state()) ->
+    state().
+handle_notification_processed(NotificationID, State = #{notifications_processed := Buffer}) ->
+    State#{notifications_processed => mg_core_circular_buffer:push(NotificationID, Buffer)}.
 
 -spec call_processor(
     processor_impact(),
@@ -1169,34 +1165,21 @@ get_scheduler_ref(SchedulerType, Options) ->
 -spec try_send_timer_task(scheduler_type(), mg_core_queue_task:target_time(), state()) -> ok.
 try_send_timer_task(SchedulerType, TargetTime, #{id := ID, schedulers := Schedulers}) ->
     case maps:get(SchedulerType, Schedulers, undefined) of
-        undefined ->
-            ok;
-        SchedulerRef ->
-            try_send_scheduler_task(
-                fun(ScheduledTime) ->
-                    mg_core_queue_timer:build_task(ID, ScheduledTime)
-                end,
-                SchedulerRef,
-                TargetTime
-            )
-    end.
-
--type send_task_fun() :: fun((mg_core_queue_task:target_time()) -> mg_core_queue_task:task(_, _)).
-
--spec try_send_scheduler_task(send_task_fun(), scheduler_ref(), mg_core_queue_task:target_time()) -> ok.
-try_send_scheduler_task(TaskFun, SchedulerRef, TargetTime) ->
-    case SchedulerRef of
         {SchedulerID, Cutoff} when is_integer(Cutoff) ->
             % Ok let's send if it's not too far in the future.
             CurrentTime = mg_core_queue_task:current_time(),
             case TargetTime =< CurrentTime + Cutoff of
                 true ->
-                    mg_core_scheduler:send_task(SchedulerID, TaskFun(TargetTime));
+                    Task = mg_core_queue_timer:build_task(ID, TargetTime),
+                    mg_core_scheduler:send_task(SchedulerID, Task);
                 false ->
                     ok
             end;
         {_SchedulerID, undefined} ->
             % No defined cutoff, can't make decisions.
+            ok;
+        undefined ->
+            % No scheduler to send task to.
             ok
     end.
 
@@ -1411,8 +1394,9 @@ scheduler_options(notification = SchedulerType, Options, Config) ->
         notification => notification_options(Options),
         processing_timeout => maps:get(notification_processing_timeout, Options, undefined),
         min_scan_delay => maps:get(min_scan_delay, Config, undefined),
+        rescan_delay => maps:get(rescan_delay, Config, undefined),
         scan_handicap => maps:get(scan_handicap, Config, undefined),
-        scan_cutoff => maps:get(scan_handicap, Config, undefined),
+        scan_cutoff => maps:get(scan_cutoff, Config, undefined),
         reschedule_time => maps:get(reschedule_time, Config, undefined)
     },
     scheduler_options(mg_core_queue_notifications, Options, HandlerOptions, Config).
