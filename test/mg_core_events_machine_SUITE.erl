@@ -291,16 +291,12 @@ post_events_with_notification_test(_C) ->
     ok = start(Options, MachineID, <<>>),
     _ = ?assertEqual([], get_history(Options, MachineID)),
     ok = notify(Options, MachineID, <<"notification_event">>),
-    true = mg_core_ct_helper:assert_poll_minimum_time(
-        mg_core_ct_helper:poll_for_value(
-            fun() ->
-                get_history(Options, MachineID)
-            end,
-            [{1, <<"notification_event">>}],
-            5000
-        ),
-        %% at least 2 seconds of notification queue handicap
-        2000
+    {ok, _} = mg_core_ct_helper:poll_for_value(
+        fun() ->
+            get_history(Options, MachineID)
+        end,
+        [{1, <<"notification_event">>}],
+        5000
     ),
     ok = stop_automaton(Pid).
 
