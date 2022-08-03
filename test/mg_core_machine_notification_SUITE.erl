@@ -114,7 +114,7 @@ simple_test(C) ->
     Options = ?config(options, C),
     ID = ?config(id, C),
     % simple notification
-    ok = mg_core_machine:notify(Options, ID, 42, ?REQ_CTX),
+    _NotificationID = mg_core_machine:notify(Options, ID, 42, ?REQ_CTX),
     {ok, _} = mg_core_ct_helper:poll_for_value(
         fun() ->
             mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default())
@@ -128,8 +128,8 @@ invalid_machine_id_test(C) ->
     Options = ?config(options, C),
     % simple notification
     FakeID = <<"dum">>,
-    ok = mg_core_machine:notify(Options, FakeID, 42, ?REQ_CTX),
-    [_] = search_notifications_for_machine(FakeID),
+    NotificationID = mg_core_machine:notify(Options, FakeID, 42, ?REQ_CTX),
+    [{_, NotificationID}] = search_notifications_for_machine(FakeID),
     %% An impossible-to-satisfy notification gets deleted
     ok = await_notification_deleted(FakeID, 1000).
 
@@ -138,7 +138,7 @@ retry_after_fail_test(C) ->
     Options = ?config(options, C),
     ID = ?config(id, C),
     % fail with notification, repair, retry notification
-    ok = mg_core_machine:notify(Options, ID, [<<"fail_when">>, 0], ?REQ_CTX),
+    _NotificationID = mg_core_machine:notify(Options, ID, [<<"fail_when">>, 0], ?REQ_CTX),
     %% wait for notification to kill the machine
     {ok, _} = mg_core_ct_helper:poll_for_exception(
         fun() ->
@@ -170,10 +170,10 @@ timeout_test(C) ->
     Options = ?config(options, C),
     ID = ?config(id, C),
     % fail with notification, repair, retry notification
-    ok = mg_core_machine:notify(Options, ID, [<<"timeout_when">>, 0], ?REQ_CTX),
+    NotificationID = mg_core_machine:notify(Options, ID, [<<"timeout_when">>, 0], ?REQ_CTX),
     %% test notification timing out
     _ = timer:sleep(1000),
-    [_] = search_notifications_for_machine(ID),
+    [{_, NotificationID}] = search_notifications_for_machine(ID),
     %% test notification no longer timing out
     ok = mg_core_machine:call(Options, ID, increment, ?REQ_CTX, mg_core_deadline:default()),
     ok = await_notification_deleted(ID, 3000),

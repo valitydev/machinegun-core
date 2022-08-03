@@ -290,7 +290,7 @@ post_events_with_notification_test(_C) ->
     {Pid, Options} = start_automaton(BaseOptions#{events_storage => EventsStorage}),
     ok = start(Options, MachineID, <<>>),
     _ = ?assertEqual([], get_history(Options, MachineID)),
-    ok = notify(Options, MachineID, <<"notification_event">>),
+    _NotificationID = notify(Options, MachineID, <<"notification_event">>),
     {ok, _} = mg_core_ct_helper:poll_for_value(
         fun() ->
             get_history(Options, MachineID)
