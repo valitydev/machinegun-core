@@ -329,7 +329,8 @@ repair(Options, ID, Args, ReqCtx, Deadline) ->
 call(Options, ID, Call, ReqCtx, Deadline) ->
     call_(Options, ID, {call, Call}, ReqCtx, Deadline).
 
--spec notify(options(), mg_core:id(), mg_core_storage:opaque(), request_context()) -> mg_core_notification:id() | throws().
+-spec notify(options(), mg_core:id(), mg_core_storage:opaque(), request_context()) ->
+    mg_core_notification:id() | throws().
 notify(Options, ID, Args, ReqCtx) ->
     NotificationID = generate_snowflake_id(),
     Timestamp = genlib_time:unow(),

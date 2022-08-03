@@ -205,12 +205,13 @@ process_machine(_, _, {call, get}, _, ?REQ_CTX, _, TestValue) ->
 process_machine(_, _, {call, increment}, _, ?REQ_CTX, _, TestValue) ->
     {{reply, ok}, sleep, TestValue + 1};
 process_machine(_, _, {notification, _, [<<"timeout_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
-    _ = case State of
-        Arg ->
-            _ = timer:sleep(1500);
-        _ ->
-            ok
-    end,
+    _ =
+        case State of
+            Arg ->
+                _ = timer:sleep(1500);
+            _ ->
+                ok
+        end,
     {{reply, ok}, sleep, State};
 process_machine(_, _, {notification, _, [<<"fail_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
     case State of
