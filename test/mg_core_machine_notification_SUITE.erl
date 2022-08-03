@@ -32,6 +32,7 @@
 -export([simple_test/1]).
 -export([invalid_machine_id_test/1]).
 -export([retry_after_fail_test/1]).
+-export([timeout_test/1]).
 
 %% mg_core_machine
 -behaviour(mg_core_machine).
@@ -61,7 +62,8 @@ groups() ->
         {base, [], [
             simple_test,
             invalid_machine_id_test,
-            retry_after_fail_test
+            retry_after_fail_test,
+            timeout_test
         ]}
     ].
 
@@ -163,6 +165,20 @@ retry_after_fail_test(C) ->
     ok = await_notification_deleted(ID, 3000),
     1 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()).
 
+-spec timeout_test(config()) -> _.
+timeout_test(C) ->
+    Options = ?config(options, C),
+    ID = ?config(id, C),
+    % fail with notification, repair, retry notification
+    ok = mg_core_machine:notify(Options, ID, [<<"timeout_when">>, 0], ?REQ_CTX),
+    %% test notification timing out
+    _ = timer:sleep(1000),
+    [_] = search_notifications_for_machine(ID),
+    %% test notification no longer timing out
+    ok = mg_core_machine:call(Options, ID, increment, ?REQ_CTX, mg_core_deadline:default()),
+    ok = await_notification_deleted(ID, 3000),
+    1 = mg_core_machine:call(Options, ID, get, ?REQ_CTX, mg_core_deadline:default()).
+
 %%
 %% processor
 %%
@@ -188,6 +204,14 @@ process_machine(_, _, {call, get}, _, ?REQ_CTX, _, TestValue) ->
     {{reply, TestValue}, sleep, TestValue};
 process_machine(_, _, {call, increment}, _, ?REQ_CTX, _, TestValue) ->
     {{reply, ok}, sleep, TestValue + 1};
+process_machine(_, _, {notification, _, [<<"timeout_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
+    _ = case State of
+        Arg ->
+            _ = timer:sleep(1500);
+        _ ->
+            ok
+    end,
+    {{reply, ok}, sleep, State};
 process_machine(_, _, {notification, _, [<<"fail_when">>, Arg]}, _, ?REQ_CTX, _, State) ->
     case State of
         Arg ->
@@ -254,6 +278,7 @@ automaton_options(_C) ->
             registry => mg_core_procreg_gproc
         },
         notification => notification_options(),
+        notification_processing_timeout => 500,
         pulse => ?MODULE,
         schedulers => #{
             timers => Scheduler,

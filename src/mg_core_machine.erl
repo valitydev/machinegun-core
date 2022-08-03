@@ -329,7 +329,7 @@ repair(Options, ID, Args, ReqCtx, Deadline) ->
 call(Options, ID, Call, ReqCtx, Deadline) ->
     call_(Options, ID, {call, Call}, ReqCtx, Deadline).
 
--spec notify(options(), mg_core:id(), mg_core_storage:opaque(), request_context()) -> ok | throws().
+-spec notify(options(), mg_core:id(), mg_core_storage:opaque(), request_context()) -> mg_core_notification:id() | throws().
 notify(Options, ID, Args, ReqCtx) ->
     NotificationID = generate_snowflake_id(),
     Timestamp = genlib_time:unow(),
@@ -345,7 +345,7 @@ notify(Options, ID, Args, ReqCtx) ->
         undefined
     ),
     ok = send_notification_task(Options, NotificationID, OpaqueArgs, ID, Context, Timestamp),
-    ok.
+    NotificationID.
 
 -spec send_timeout(options(), mg_core:id(), genlib_time:ts(), deadline()) -> _Resp | throws().
 send_timeout(Options, ID, Timestamp, Deadline) ->
