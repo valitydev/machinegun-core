@@ -348,6 +348,12 @@ notify(Options, ID, Args, ReqCtx) ->
         undefined
     ),
     ok = send_notification_task(Options, NotificationID, OpaqueArgs, ID, Context, Timestamp),
+    ok = emit_beat(Options, #mg_core_machine_notification_created{
+        namespace = maps:get(namespace, Options),
+        machine_id = ID,
+        notification_id = NotificationID,
+        target_timestamp = Timestamp
+    }),
     NotificationID.
 
 -spec send_timeout(options(), mg_core:id(), genlib_time:ts(), deadline()) -> _Resp | throws().

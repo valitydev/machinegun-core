@@ -210,12 +210,14 @@
 %% Machine notification
 
 -record(mg_core_machine_notification_created, {
+    namespace :: mg_core:ns(),
     machine_id :: mg_core:id(),
     notification_id :: mg_core:id(),
     target_timestamp :: genlib_time:ts()
 }).
 
 -record(mg_core_machine_notification_rescheduled, {
+    namespace :: mg_core:ns(),
     machine_id :: mg_core:id(),
     notification_id :: mg_core:id(),
     reason :: mg_core_utils:exception(),
@@ -223,6 +225,7 @@
 }).
 
 -record(mg_core_machine_notification_deleted, {
+    namespace :: mg_core:ns(),
     machine_id :: mg_core:id(),
     notification_id :: mg_core:id(),
     reason :: finished | {failed, mg_core_utils:exception()}

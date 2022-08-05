@@ -224,6 +224,7 @@ get_reschedule_time(Options) ->
 ) -> ok.
 emit_deleted_beat(Options, MachineID, NotificationID, Reason) ->
     ok = emit_beat(Options, #mg_core_machine_notification_deleted{
+        namespace = maps:get(namespace, machine_options(Options)),
         machine_id = MachineID,
         notification_id = NotificationID,
         reason = Reason
@@ -238,6 +239,7 @@ emit_deleted_beat(Options, MachineID, NotificationID, Reason) ->
 ) -> ok.
 emit_rescheduled_beat(Options, MachineID, NotificationID, Reason, NewTargetTime) ->
     ok = emit_beat(Options, #mg_core_machine_notification_rescheduled{
+        namespace = maps:get(namespace, machine_options(Options)),
         machine_id = MachineID,
         notification_id = NotificationID,
         reason = Reason,
