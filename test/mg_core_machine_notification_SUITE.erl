@@ -126,12 +126,8 @@ simple_test(C) ->
 -spec invalid_machine_id_test(config()) -> _.
 invalid_machine_id_test(C) ->
     Options = ?config(options, C),
-    % simple notification
-    FakeID = <<"dum">>,
-    NotificationID = mg_core_machine:notify(Options, FakeID, 42, ?REQ_CTX),
-    [{_, NotificationID}] = search_notifications_for_machine(FakeID),
-    %% An impossible-to-satisfy notification gets deleted
-    ok = await_notification_deleted(FakeID, 1000).
+    {logic, machine_not_found} =
+        (catch mg_core_machine:notify(Options, <<"dum">>, 42, ?REQ_CTX)).
 
 -spec retry_after_fail_test(config()) -> _.
 retry_after_fail_test(C) ->
