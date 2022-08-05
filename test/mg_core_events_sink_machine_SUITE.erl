@@ -151,11 +151,6 @@ event_sink_ns_options() ->
         worker => #{
             registry => mg_core_procreg_gproc
         },
-        notification => #{
-            namespace => ?ES_ID,
-            pulse => ?MODULE,
-            storage => mg_core_storage_memory
-        },
         pulse => ?MODULE,
         default_processing_timeout => 1000,
         events_storage => mg_core_storage_memory

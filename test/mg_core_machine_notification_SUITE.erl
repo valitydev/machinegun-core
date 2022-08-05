@@ -29,6 +29,7 @@
 -export([end_per_testcase/2]).
 
 %% tests
+-export([no_notification_options_test/1]).
 -export([simple_test/1]).
 -export([invalid_machine_id_test/1]).
 -export([retry_after_fail_test/1]).
@@ -53,12 +54,16 @@
 -spec all() -> [test_name() | {group, group_name()}].
 all() ->
     [
+        {group, no_notification_opts},
         {group, base}
     ].
 
 -spec groups() -> [{group_name(), list(_), [test_name()]}].
 groups() ->
     [
+        {no_notification_opts, [], [
+            no_notification_options_test
+        ]},
         {base, [], [
             simple_test,
             invalid_machine_id_test,
@@ -82,6 +87,8 @@ end_per_suite(C) ->
     mg_core_ct_helper:stop_applications(?config(apps, C)).
 
 -spec init_per_group(group_name(), config()) -> config().
+init_per_group(no_notification_opts, C) ->
+    C;
 init_per_group(base, C) ->
     Options = automaton_options(C),
     Pid = start_automaton(Options),
@@ -89,13 +96,17 @@ init_per_group(base, C) ->
     [{options, Options}, {automaton, Pid} | C].
 
 -spec end_per_group(group_name(), config()) -> _.
-end_per_group(_, C) ->
+end_per_group(no_notification_opts, _C) ->
+    ok;
+end_per_group(base, C) ->
     ok = stop_automaton(?config(automaton, C)),
     ok.
 
 -define(REQ_CTX, <<"req_ctx">>).
 
 -spec init_per_testcase(test_name(), config()) -> config().
+init_per_testcase(no_notification_options_test, C) ->
+    C;
 init_per_testcase(_, C) ->
     ID = genlib:unique(),
     ok = mg_core_machine:start(?config(options, C), ID, 0, ?REQ_CTX, mg_core_deadline:default()),
@@ -108,6 +119,19 @@ end_per_testcase(_, _C) ->
 %%
 %% tests
 %%
+
+-spec no_notification_options_test(config()) -> _.
+no_notification_options_test(C) ->
+    RawOptions = automaton_options(C),
+    Options0 = maps:without([notification], RawOptions),
+    Options = Options0#{schedulers => maps:without([notification], maps:get(schedulers, Options0))},
+    Pid = start_automaton(Options),
+    _ = unlink(Pid),
+    ID = genlib:unique(),
+    ok = mg_core_machine:start(Options, ID, 0, ?REQ_CTX, mg_core_deadline:default()),
+    ?assertError(function_clause, mg_core_machine:notify(Options, ID, 42, ?REQ_CTX)),
+    ?assertExit(_, mg_core_machine:notify(RawOptions, ID, 42, ?REQ_CTX)),
+    _ = stop_automaton(Pid).
 
 -spec simple_test(config()) -> _.
 simple_test(C) ->

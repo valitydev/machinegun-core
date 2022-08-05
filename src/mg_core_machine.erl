@@ -158,7 +158,7 @@
     namespace := mg_core:ns(),
     pulse := mg_core_pulse:handler(),
     storage => storage_options(),
-    notification := mg_core_notification:options(),
+    notification => mg_core_notification:options(),
     processor => mg_core_utils:mod_opts(),
     worker => mg_core_workers_manager:ns_options(),
     retries => retry_opt(),
@@ -282,7 +282,7 @@ machine_sup_child_spec(Options, ChildID) ->
                 #{strategy => rest_for_one},
                 mg_core_utils:lists_compact([
                     mg_core_storage:child_spec(storage_options(Options), storage),
-                    mg_core_notification:child_spec(notification_options(Options), notification),
+                    notification_child_spec(Options),
                     processor_child_spec(Options),
                     mg_core_workers_manager:child_spec(manager_options(Options), manager)
                 ])
@@ -1006,6 +1006,12 @@ call_processor(Impact, ProcessingCtx, ReqCtx, Deadline, State) ->
         process_machine,
         [ID, Impact, ProcessingCtx, ReqCtx, Deadline, MachineState]
     ).
+
+-spec notification_child_spec(options()) -> supervisor:child_spec() | undefined.
+notification_child_spec(#{notification := NotificationOptions}) ->
+    mg_core_notification:child_spec(NotificationOptions, notification);
+notification_child_spec(#{}) ->
+    undefined.
 
 -spec processor_child_spec(options()) -> supervisor:child_spec().
 processor_child_spec(Options) ->
