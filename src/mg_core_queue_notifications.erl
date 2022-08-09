@@ -137,18 +137,20 @@ execute_task(Options, #{id := NotificationID, machine_id := MachineID, payload :
     #{args := Args, context := Context} = Payload,
     try mg_core_machine:send_notification(machine_options(Options), MachineID, NotificationID, Args, Deadline) of
         Result ->
-            ok = delete_notification(Options, MachineID, NotificationID, Context, finished),
+            ok = emit_delivered_beat(Options, MachineID, NotificationID),
+            ok = mg_core_notification:delete(notification_options(Options), NotificationID, Context),
             Result
     catch
         throw:Reason:Stacktrace ->
-            Error = {throw, Reason, Stacktrace},
+            Exception = {throw, Reason, Stacktrace},
+            Action = task_fail_action(Options, Reason),
+            ok = emit_delivery_error_beat(Options, MachineID, NotificationID, Exception, Action),
             _ =
-                case task_fail_action(Options, Reason) of
+                case Action of
                     delete ->
-                        ok = delete_notification(Options, MachineID, NotificationID, Context, {failed, Error});
+                        ok = mg_core_notification:delete(notification_options(Options), NotificationID, Context);
                     {reschedule, NewTargetTime} ->
-                        ok = mg_core_scheduler:send_task(SchedulerID, Task#{target_time => NewTargetTime}),
-                        ok = emit_rescheduled_beat(Options, MachineID, NotificationID, Error, NewTargetTime);
+                        ok = mg_core_scheduler:send_task(SchedulerID, Task#{target_time => NewTargetTime});
                     ignore ->
                         ok
                 end,
@@ -200,50 +202,37 @@ task_fail_action(Options, {timeout, _}) ->
 task_fail_action(_Options, _) ->
     ignore.
 
--spec delete_notification(
-    options(),
-    mg_core:id(),
-    mg_core_notification:id(),
-    mg_core_notification:context(),
-    {failed, mg_core_utils:exception()} | finished
-) -> ok.
-delete_notification(Options, MachineID, NotificationID, Context, Reason) ->
-    ok = mg_core_notification:delete(notification_options(Options), NotificationID, Context),
-    ok = emit_deleted_beat(Options, MachineID, NotificationID, Reason).
-
 -spec get_reschedule_time(options()) -> target_time().
 get_reschedule_time(Options) ->
     Reschedule = maps:get(reschedule_time, Options, ?DEFAULT_RESCHEDULE_SECONDS),
     mg_core_queue_task:current_time() + Reschedule.
 
--spec emit_deleted_beat(
-    options(),
-    mg_core:id(),
-    mg_core_notification:id(),
-    {failed, mg_core_utils:exception()} | finished
-) -> ok.
-emit_deleted_beat(Options, MachineID, NotificationID, Reason) ->
-    ok = emit_beat(Options, #mg_core_machine_notification_deleted{
-        namespace = maps:get(namespace, machine_options(Options)),
-        machine_id = MachineID,
-        notification_id = NotificationID,
-        reason = Reason
-    }).
-
--spec emit_rescheduled_beat(
+-spec emit_delivery_error_beat(
     options(),
     mg_core:id(),
     mg_core_notification:id(),
     mg_core_utils:exception(),
-    target_time()
+    fail_action()
 ) -> ok.
-emit_rescheduled_beat(Options, MachineID, NotificationID, Reason, NewTargetTime) ->
-    ok = emit_beat(Options, #mg_core_machine_notification_rescheduled{
+emit_delivery_error_beat(Options, MachineID, NotificationID, Exception, Action) ->
+    ok = emit_beat(Options, #mg_core_machine_notification_delivery_error{
         namespace = maps:get(namespace, machine_options(Options)),
         machine_id = MachineID,
         notification_id = NotificationID,
-        reason = Reason,
-        new_target_timestamp = NewTargetTime
+        exception = Exception,
+        action = Action
+    }).
+
+-spec emit_delivered_beat(
+    options(),
+    mg_core:id(),
+    mg_core_notification:id()
+) -> ok.
+emit_delivered_beat(Options, MachineID, NotificationID) ->
+    ok = emit_beat(Options, #mg_core_machine_notification_delivered{
+        namespace = maps:get(namespace, machine_options(Options)),
+        machine_id = MachineID,
+        notification_id = NotificationID
     }).
 
 -spec emit_beat(options(), mg_core_pulse:beat()) -> ok.

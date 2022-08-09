@@ -216,19 +216,18 @@
     target_timestamp :: genlib_time:ts()
 }).
 
--record(mg_core_machine_notification_rescheduled, {
+-record(mg_core_machine_notification_delivered, {
     namespace :: mg_core:ns(),
     machine_id :: mg_core:id(),
-    notification_id :: mg_core:id(),
-    reason :: mg_core_utils:exception(),
-    new_target_timestamp :: genlib_time:ts()
+    notification_id :: mg_core:id()
 }).
 
--record(mg_core_machine_notification_deleted, {
+-record(mg_core_machine_notification_delivery_error, {
     namespace :: mg_core:ns(),
     machine_id :: mg_core:id(),
     notification_id :: mg_core:id(),
-    reason :: finished | {failed, mg_core_utils:exception()}
+    exception :: mg_core_utils:exception(),
+    action :: delete | {reschedule, genlib_time:ts()} | ignore
 }).
 
 %% Storage operations
