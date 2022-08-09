@@ -145,16 +145,14 @@ execute_task(Options, #{id := NotificationID, machine_id := MachineID, payload :
             Exception = {throw, Reason, Stacktrace},
             Action = task_fail_action(Options, Reason),
             ok = emit_delivery_error_beat(Options, MachineID, NotificationID, Exception, Action),
-            _ =
-                case Action of
-                    delete ->
-                        ok = mg_core_notification:delete(notification_options(Options), NotificationID, Context);
-                    {reschedule, NewTargetTime} ->
-                        ok = mg_core_scheduler:send_task(SchedulerID, Task#{target_time => NewTargetTime});
-                    ignore ->
-                        ok
-                end,
-            erlang:raise(throw, Reason, Stacktrace)
+            case Action of
+                delete ->
+                    ok = mg_core_notification:delete(notification_options(Options), NotificationID, Context);
+                {reschedule, NewTargetTime} ->
+                    ok = mg_core_scheduler:send_task(SchedulerID, Task#{target_time => NewTargetTime});
+                ignore ->
+                    erlang:raise(throw, Reason, Stacktrace)
+            end
     end.
 
 %%
