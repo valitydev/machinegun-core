@@ -100,7 +100,7 @@ call(Options, NS, ID, Call, ReqCtx, Deadline, Pulse) ->
     mg_core_procreg:call(
         procreg_options(Options),
         ?WRAP_ID(NS, ID),
-        {call, Deadline, Call, ReqCtx},
+        {call, Deadline, Call, mg_core_otel:with_current_span_ctx(ReqCtx)},
         mg_core_deadline:to_timeout(Deadline)
     ).
 
@@ -178,10 +178,11 @@ init({ID, Options = #{worker := WorkerModOpts}, ReqCtx}) ->
 % загрузка делается отдельно и лениво, чтобы не блокировать этим супервизор,
 % т.к. у него легко может начать расти очередь
 handle_call(
-    Call = {call, _, _, _},
+    Call = {call, _, _, CallCtx},
     From,
     State = #{id := ID, mod := Mod, status := {loading, Args, ReqCtx}}
 ) ->
+    _ = mg_core_otel:set_current_span_from_ctx(CallCtx),
     case Mod:handle_load(ID, Args, ReqCtx) of
         {ok, ModState} ->
             handle_call(Call, From, State#{status := {working, ModState}});
@@ -193,9 +194,10 @@ handle_call(
     From,
     State = #{mod := Mod, status := {working, ModState}}
 ) ->
+    ReqCtx1 = mg_core_otel:set_current_span_from_ctx(ReqCtx),
     case mg_core_deadline:is_reached(Deadline) of
         false ->
-            {ReplyAction, NewModState} = Mod:handle_call(Call, From, ReqCtx, Deadline, ModState),
+            {ReplyAction, NewModState} = Mod:handle_call(Call, From, ReqCtx1, Deadline, ModState),
             NewState = State#{status := {working, NewModState}},
             case ReplyAction of
                 {reply, Reply} ->
@@ -206,7 +208,7 @@ handle_call(
         true ->
             ok = logger:warning(
                 "rancid worker call received: ~p from: ~p deadline: ~s reqctx: ~p",
-                [Call, From, mg_core_deadline:format(Deadline), ReqCtx]
+                [Call, From, mg_core_deadline:format(Deadline), ReqCtx1]
             ),
             {noreply, schedule_unload_timer(State), hibernate_timeout(State)}
     end;
