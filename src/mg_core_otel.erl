@@ -31,7 +31,7 @@ set_current_span_from_ctx(Ctx) ->
     _ = otel_tracer:set_current_span(SpanCtx),
     UnwrappedCtx.
 
--spec wrap_ctx(opentelemetry:span_ctx() | undefined, Ctx) -> wrapped_ctx(Ctx) | Ctx.
+-spec wrap_ctx(opentelemetry:span_ctx() | undefined, Ctx) -> maybe_wrapped_ctx(Ctx).
 wrap_ctx(undefined, Ctx) ->
     Ctx;
 wrap_ctx(SpanCtx, Ctx) ->
