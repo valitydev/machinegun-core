@@ -97,10 +97,11 @@ call(Options, NS, ID, Call, ReqCtx, Deadline, Pulse) ->
         request_context = ReqCtx,
         deadline = Deadline
     }),
+    SpanCtx = otel_tracer:current_span_ctx(),
     mg_core_procreg:call(
         procreg_options(Options),
         ?WRAP_ID(NS, ID),
-        {call, Deadline, Call, mg_core_otel:with_current_span_ctx(ReqCtx)},
+        {call, Deadline, Call, ReqCtx, SpanCtx},
         mg_core_deadline:to_timeout(Deadline)
     ).
 
@@ -178,11 +179,11 @@ init({ID, Options = #{worker := WorkerModOpts}, ReqCtx}) ->
 % загрузка делается отдельно и лениво, чтобы не блокировать этим супервизор,
 % т.к. у него легко может начать расти очередь
 handle_call(
-    Call = {call, _, _, CallCtx},
+    Call = {call, _, _, _, SpanCtx},
     From,
     State = #{id := ID, mod := Mod, status := {loading, Args, ReqCtx}}
 ) ->
-    _ = mg_core_otel:set_current_span_from_ctx(CallCtx),
+    _ = otel_tracer:set_current_span(SpanCtx),
     case Mod:handle_load(ID, Args, ReqCtx) of
         {ok, ModState} ->
             handle_call(Call, From, State#{status := {working, ModState}});
@@ -190,14 +191,14 @@ handle_call(
             {stop, normal, Error, State}
     end;
 handle_call(
-    {call, Deadline, Call, ReqCtx},
+    {call, Deadline, Call, ReqCtx, SpanCtx},
     From,
     State = #{mod := Mod, status := {working, ModState}}
 ) ->
-    ReqCtx1 = mg_core_otel:set_current_span_from_ctx(ReqCtx),
+    _ = otel_tracer:set_current_span(SpanCtx),
     case mg_core_deadline:is_reached(Deadline) of
         false ->
-            {ReplyAction, NewModState} = Mod:handle_call(Call, From, ReqCtx1, Deadline, ModState),
+            {ReplyAction, NewModState} = Mod:handle_call(Call, From, ReqCtx, Deadline, ModState),
             NewState = State#{status := {working, NewModState}},
             case ReplyAction of
                 {reply, Reply} ->
@@ -208,7 +209,7 @@ handle_call(
         true ->
             ok = logger:warning(
                 "rancid worker call received: ~p from: ~p deadline: ~s reqctx: ~p",
-                [Call, From, mg_core_deadline:format(Deadline), ReqCtx1]
+                [Call, From, mg_core_deadline:format(Deadline), ReqCtx]
             ),
             {noreply, schedule_unload_timer(State), hibernate_timeout(State)}
     end;
