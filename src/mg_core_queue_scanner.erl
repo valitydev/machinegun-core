@@ -172,6 +172,8 @@ init({SchedulerID, Options}) ->
 -spec discover(st()) -> {ok, [pid()], st()}.
 discover(St = #st{scheduler_id = SchedulerID}) ->
     Nodes = erlang:nodes(),
+    logger:info("MG_DEBUG. scanner nodes discovered: ~p", [Nodes]),
+%    io:format(user, "MG_DEBUG. scanner nodes discovered: ~p~n", [Nodes]),
     Pids = multicall(Nodes, ?MODULE, where_is, [SchedulerID], ?DISCOVER_TIMEOUT),
     {ok, lists:filter(fun erlang:is_pid/1, Pids), St}.
 

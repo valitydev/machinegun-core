@@ -232,6 +232,8 @@ get_rank(#st{rank = undefined}) ->
 
 -spec init(st()) -> {ok, st()} | ignore | {stop, _Reason}.
 init(St0) ->
+    logger:info("MG_DEBUG. init squad with state: ~p", [St0]),
+%    io:format(user, "MG_DEBUG. init squad with state: ~p~n", [St0]),
     case invoke_callback(init, [], St0) of
         {ok, St = #st{squad = Squad0, opts = Opts}} ->
             Squad = add_member(self(), Squad0, Opts),
