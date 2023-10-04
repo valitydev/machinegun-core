@@ -25,6 +25,7 @@ reg_name(Options, Name) ->
 
 -spec select(options(), mg_core_procreg:name_pattern()) -> [{mg_core_procreg:name(), pid()}].
 select(_Options, NamePattern) ->
+    logger:info("MG_DEBUG. global select: ~p", [NamePattern]),
     lists:foldl(
         fun(Name, Acc) ->
             case match(Name, NamePattern) of
@@ -39,10 +40,12 @@ select(_Options, NamePattern) ->
 -spec start_link(options(), mg_core_procreg:reg_name(), module(), _Args, list()) ->
     mg_core_procreg:start_link_ret().
 start_link(_Options, RegName, Module, Args, Opts) ->
+    logger:info("MG_DEBUG. global start_link: ~p", [RegName]),
     gen_server:start_link(RegName, Module, Args, Opts).
 
 -spec call(options(), mg_core_procreg:ref(), _Call, timeout()) -> _Reply.
 call(_Options, Ref, Call, Timeout) ->
+    logger:info("MG_DEBUG. global call: ~p", [Ref]),
     gen_server:call(Ref, Call, Timeout).
 
 %% Internal functions
