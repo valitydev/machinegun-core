@@ -47,7 +47,7 @@ call(_Options, Ref, Call, Timeout) ->
 
 %% Internal functions
 
--spec match(term(), mg_core_procreg:name_pattern()) -> boolean().
+-spec match(term(), term()) -> boolean().
 %% optimization for frequent cases
 match({Mod, {NS, _ID}}, {Mod, {NS, '$1'}}) ->
     true;
