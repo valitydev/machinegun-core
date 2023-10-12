@@ -115,4 +115,26 @@ match_test() ->
         false,
         match({module, {ns, <<"qwe">>}}, {module, {<<"ns">>, '$1'}})
     ).
+
+-spec select_test() -> _.
+select_test() ->
+    Fun = fun() ->
+        receive
+            _M -> ok
+        end
+    end,
+    Pid1 = spawn(Fun),
+    Pid2 = spawn(Fun),
+    global:register_name(proc1, Pid1),
+    global:register_name(proc2, Pid2),
+    ?assertEqual(
+        [{proc1, Pid1}],
+        select(undefined, proc1)
+    ).
+
+-spec ref_reg_test() -> _.
+ref_reg_test() ->
+    ?assertEqual({global, abc}, ref(undefined, abc)),
+    ?assertEqual({global, abc}, reg_name(undefined, abc)).
+
 -endif.
