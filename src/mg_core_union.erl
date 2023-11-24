@@ -38,6 +38,10 @@
     reconnect_timeout => non_neg_integer()
 }.
 
+%% discovery behaviour callback
+-callback discovery(dns_discovery_options()) -> {ok, [node()]}.
+
+
 %% API
 -spec child_spec(cluster_options()) -> [supervisor:child_spec()].
 child_spec(#{discovery := _} = ClusterOpts) ->
@@ -50,9 +54,6 @@ child_spec(#{discovery := _} = ClusterOpts) ->
 child_spec(_) ->
     % cluster not configured, skip
     [].
-
-%% discovery behaviour callback
--callback discovery(dns_discovery_options()) -> {ok, [node()]}.
 
 -spec discovery(dns_discovery_options()) -> {ok, [node()]}.
 discovery(#{<<"domain_name">> := DomainName, <<"sname">> := Sname}) ->
