@@ -41,7 +41,6 @@
 %% discovery behaviour callback
 -callback discovery(dns_discovery_options()) -> {ok, [node()]}.
 
-
 %% API
 -spec child_spec(cluster_options()) -> [supervisor:child_spec()].
 child_spec(#{discovery := _} = ClusterOpts) ->
