@@ -39,17 +39,26 @@
 }.
 
 %% API
--spec child_spec(cluster_options()) -> supervisor:child_spec().
-child_spec(ClusterOpts) ->
-    #{
-        id => ?MODULE,
-        start => {?MODULE, start_link, [ClusterOpts]}
-    }.
+-spec child_spec(cluster_options()) -> [supervisor:child_spec()].
+child_spec(#{discovery := _} = ClusterOpts) ->
+    [
+        #{
+            id => ?MODULE,
+            start => {?MODULE, start_link, [ClusterOpts]}
+        }
+    ];
+child_spec(_) ->
+    % cluster not configured, skip
+    [].
+
+%% discovery behaviour callback
+-callback discovery(dns_discovery_options()) -> {ok, [node()]}.
 
 -spec discovery(dns_discovery_options()) -> {ok, [node()]}.
 discovery(#{<<"domain_name">> := DomainName, <<"sname">> := Sname}) ->
     case get_addrs(unicode:characters_to_list(DomainName)) of
         {ok, ListAddrs} ->
+            logger:info("resolve ~p with result: ~p", [DomainName, ListAddrs]),
             {ok, addrs_to_nodes(ListAddrs, Sname)};
         Error ->
             error({resolve_error, Error})
@@ -64,6 +73,7 @@ start_link(ClusterOpts) ->
 
 -spec init(cluster_options()) -> {ok, state(), {continue, {full_init, cluster_options()}}}.
 init(ClusterOpts) ->
+    logger:info("init cluster with options: ~p", [ClusterOpts]),
     {ok, #{}, {continue, {full_init, ClusterOpts}}}.
 
 -spec handle_continue({full_init, cluster_options()}, state()) -> {noreply, state()}.
@@ -86,6 +96,7 @@ handle_info({timeout, _TRef, {reconnect, Node}}, State) ->
     ListNodes = maybe_connect(Node, State),
     {noreply, State#{known_nodes => ListNodes}};
 handle_info({nodeup, RemoteNode}, #{known_nodes := ListNodes} = State) ->
+    logger:info("~p receive nodeup ~p", [node(), RemoteNode]),
     NewState =
         case lists:member(RemoteNode, ListNodes) of
             true ->
@@ -99,11 +110,11 @@ handle_info({nodeup, RemoteNode}, #{known_nodes := ListNodes} = State) ->
                 State#{known_nodes => NewListNodes}
         end,
     {noreply, NewState};
-handle_info({nodedown, Node}, #{reconnect_timeout := Timeout} = State) ->
-    _ = erlang:start_timer(Timeout, self(), {reconnect, Node}),
+handle_info({nodedown, RemoteNode}, #{reconnect_timeout := Timeout} = State) ->
+    logger:warning("~p receive nodedown ~p", [node(), RemoteNode]),
+    _ = erlang:start_timer(Timeout, self(), {reconnect, RemoteNode}),
     {noreply, State};
 handle_info(_Info, State) ->
-    io:format(user, "Unhandled msg: ~p~n", [_Info]),
     {noreply, State}.
 
 -spec terminate(_Reason, state()) -> ok.
