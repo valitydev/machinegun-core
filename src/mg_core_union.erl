@@ -109,14 +109,10 @@ handle_continue({full_init, #{discovery := #{module := Mod, options := Opts}} = 
 handle_call({set_state, NewState}, _From, _State) ->
     {reply, ok, NewState};
 handle_call(get_cluster_size, _From, #{known_nodes := ListNodes} = State) ->
-    {reply, erlang:length(ListNodes), State};
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+    {reply, erlang:length(ListNodes), State}.
 -else.
 handle_call(get_cluster_size, _From, #{known_nodes := ListNodes} = State) ->
-    {reply, erlang:length(ListNodes), State};
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+    {reply, erlang:length(ListNodes), State}.
 -endif.
 
 -spec handle_cast(term(), state()) -> {noreply, state()}.
@@ -145,8 +141,6 @@ handle_info({nodeup, RemoteNode}, #{known_nodes := ListNodes} = State) ->
 handle_info({nodedown, RemoteNode}, #{reconnect_timeout := Timeout} = State) ->
     logger:warning("union. ~p receive nodedown ~p", [node(), RemoteNode]),
     _ = erlang:start_timer(Timeout, self(), {reconnect, RemoteNode}),
-    {noreply, State};
-handle_info(_Info, State) ->
     {noreply, State}.
 
 -spec terminate(_Reason, state()) -> ok.
@@ -206,3 +200,14 @@ addrs_to_nodes(ListAddrs, Sname) ->
         [],
         ListAddrs
     ).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+-spec test() -> _.
+
+-spec connect_error_test() -> _.
+connect_error_test() ->
+    ?assertEqual(error, connect('foo@127.0.0.1', 3000)).
+
+-endif.
