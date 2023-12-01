@@ -34,8 +34,8 @@
     binary() => binary()
 }.
 -type cluster_options() :: #{
-    discovery := discovery_options(),
-    reconnect_timeout := non_neg_integer()
+    discovery => discovery_options(),
+    reconnect_timeout => non_neg_integer()
 }.
 -type state() :: #{
     known_nodes => [node()],
