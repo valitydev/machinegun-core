@@ -87,10 +87,10 @@ eunit:
 	$(REBAR) eunit --cover
 
 common-test:
-	$(REBAR) ct --cover  --name test_machinegun@127.0.0.1
+	$(REBAR) ct --cover  --name test_node@127.0.0.1
 
 common-test.%: test/mg_core_%_SUITE.erl
-	$(REBAR) ct --cover --suite=$^  --name test_machinegun@127.0.0.1
+	$(REBAR) ct --cover --suite=$^  --name test_node@127.0.0.1
 
 cover:
 	$(REBAR) covertool generate

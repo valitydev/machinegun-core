@@ -15,6 +15,7 @@
 
 -export([child_spec/1]).
 -export([discovery/1]).
+-export([cluster_size/0]).
 
 -ifdef(TEST).
 -export([set_state/1]).
@@ -45,7 +46,6 @@
 %% discovery behaviour callback
 -callback discovery(dns_discovery_options()) -> {ok, [node()]}.
 
-%% API
 -spec child_spec(cluster_options()) -> [supervisor:child_spec()].
 child_spec(#{discovery := _} = ClusterOpts) ->
     [
@@ -73,6 +73,18 @@ discovery(#{<<"domain_name">> := DomainName, <<"sname">> := Sname}) ->
 set_state(NewState) ->
     gen_server:call(?MODULE, {set_state, NewState}).
 -endif.
+
+-spec cluster_size() -> non_neg_integer().
+cluster_size() ->
+    case whereis(?MODULE) of
+        undefined ->
+            %% for backward compatibility with consul
+            ReplicaCount = os:getenv("REPLICA_COUNT", "1"),
+            erlang:list_to_integer(ReplicaCount);
+        Pid when is_pid(Pid) ->
+            gen_server:call(Pid, get_cluster_size)
+    end.
+
 %%%===================================================================
 %%% Spawning and gen_server implementation
 %%%===================================================================
@@ -96,9 +108,13 @@ handle_continue({full_init, #{discovery := #{module := Mod, options := Opts}} = 
 -ifdef(TEST).
 handle_call({set_state, NewState}, _From, _State) ->
     {reply, ok, NewState};
+handle_call(get_cluster_size, _From, #{known_nodes := ListNodes} = State) ->
+    {reply, erlang:length(ListNodes), State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 -else.
+handle_call(get_cluster_size, _From, #{known_nodes := ListNodes} = State) ->
+    {reply, erlang:length(ListNodes), State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 -endif.

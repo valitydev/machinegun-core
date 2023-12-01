@@ -16,7 +16,7 @@
         module => mg_core_union,
         options => #{
             <<"domain_name">> => <<"localhost">>,
-            <<"sname">> => <<"test_machinegun">>
+            <<"sname">> => <<"test_node">>
         }
     },
     reconnect_timeout => ?RECONNECT_TIMEOUT
@@ -29,6 +29,7 @@
 -export([exists_nodedown_test/1]).
 -export([unknown_nodeup_test/1]).
 -export([exists_nodeup_test/1]).
+-export([cluster_size_test/1]).
 
 -type config() :: [{atom(), term()}].
 -type test_case_name() :: atom().
@@ -59,7 +60,8 @@ groups() ->
             unknown_nodedown_test,
             exists_nodedown_test,
             unknown_nodeup_test,
-            exists_nodeup_test
+            exists_nodeup_test,
+            cluster_size_test
         ]}
     ].
 
@@ -130,6 +132,14 @@ exists_nodeup_test(_Config) ->
     Pid ! {nodeup, node()},
     #{known_nodes := List2} = await_sys_get_state(Pid),
     ?assertEqual(List2, [node()]),
+    exit(Pid, normal).
+
+-spec cluster_size_test(config()) -> test_result().
+cluster_size_test(_Config) ->
+    _ = os:putenv("REPLICA_COUNT", "3"),
+    ?assertEqual(3, mg_core_union:cluster_size()),
+    {ok, Pid} = mg_core_union:start_link(?CLUSTER_OPTS),
+    ?assertEqual(1, mg_core_union:cluster_size()),
     exit(Pid, normal).
 
 %% Internal functions
