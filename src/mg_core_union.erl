@@ -16,6 +16,10 @@
 -export([child_spec/1]).
 -export([discovery/1]).
 
+-ifdef(TEST).
+-export([set_state/1]).
+-endif.
+
 -define(SERVER, ?MODULE).
 -define(RECONNECT_TIMEOUT, 5000).
 
@@ -58,12 +62,17 @@ child_spec(_) ->
 discovery(#{<<"domain_name">> := DomainName, <<"sname">> := Sname}) ->
     case get_addrs(unicode:characters_to_list(DomainName)) of
         {ok, ListAddrs} ->
-            logger:info("resolve ~p with result: ~p", [DomainName, ListAddrs]),
-            {ok, addrs_to_nodes(ListAddrs, Sname)};
+            logger:info("union. resolve ~p with result: ~p", [DomainName, ListAddrs]),
+            {ok, addrs_to_nodes(lists:uniq(ListAddrs), Sname)};
         Error ->
             error({resolve_error, Error})
     end.
 
+-ifdef(TEST).
+-spec set_state(state()) -> ok.
+set_state(NewState) ->
+    gen_server:call(?MODULE, {set_state, NewState}).
+-endif.
 %%%===================================================================
 %%% Spawning and gen_server implementation
 %%%===================================================================
@@ -73,7 +82,7 @@ start_link(ClusterOpts) ->
 
 -spec init(cluster_options()) -> {ok, state(), {continue, {full_init, cluster_options()}}}.
 init(ClusterOpts) ->
-    logger:info("init cluster with options: ~p", [ClusterOpts]),
+    logger:info("union. init with options: ~p", [ClusterOpts]),
     {ok, #{}, {continue, {full_init, ClusterOpts}}}.
 
 -spec handle_continue({full_init, cluster_options()}, state()) -> {noreply, state()}.
@@ -84,8 +93,15 @@ handle_continue({full_init, #{discovery := #{module := Mod, options := Opts}} = 
     {noreply, ClusterOpts#{known_nodes => ListNodes}}.
 
 -spec handle_call(term(), {pid(), _}, state()) -> {reply, any(), state()}.
+-ifdef(TEST).
+handle_call({set_state, NewState}, _From, _State) ->
+    {reply, ok, NewState};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
+-else.
+handle_call(_Request, _From, State) ->
+    {reply, ok, State}.
+-endif.
 
 -spec handle_cast(term(), state()) -> {noreply, state()}.
 handle_cast(_Request, State) ->
@@ -96,22 +112,22 @@ handle_info({timeout, _TRef, {reconnect, Node}}, State) ->
     ListNodes = maybe_connect(Node, State),
     {noreply, State#{known_nodes => ListNodes}};
 handle_info({nodeup, RemoteNode}, #{known_nodes := ListNodes} = State) ->
-    logger:info("~p receive nodeup ~p", [node(), RemoteNode]),
+    logger:info("union. ~p receive nodeup ~p", [node(), RemoteNode]),
     NewState =
         case lists:member(RemoteNode, ListNodes) of
             true ->
-                %% well known node connected
+                %% well known node connected, do nothing
                 State;
             false ->
                 %% new node connected, need update list nodes
                 #{discovery := #{module := Mod, options := Opts}, reconnect_timeout := Timeout} = State,
                 {ok, NewListNodes} = Mod:discovery(Opts),
-                _ = try_connect_all(ListNodes, Timeout),
+                _ = try_connect_all(NewListNodes, Timeout),
                 State#{known_nodes => NewListNodes}
         end,
     {noreply, NewState};
 handle_info({nodedown, RemoteNode}, #{reconnect_timeout := Timeout} = State) ->
-    logger:warning("~p receive nodedown ~p", [node(), RemoteNode]),
+    logger:warning("union. ~p receive nodedown ~p", [node(), RemoteNode]),
     _ = erlang:start_timer(Timeout, self(), {reconnect, RemoteNode}),
     {noreply, State};
 handle_info(_Info, State) ->
