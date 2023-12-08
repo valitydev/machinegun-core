@@ -329,7 +329,7 @@ stress_test_do_test_call(Options, WorkersCount, RetrySt) ->
         Call ->
             %% NOTE If stressed machine exists and has unempty queue then all
             %%      those messages must match expected pattern
-            case mg_core_worker:get_call_queue(Options, maps:get(name, Options), ID) of
+            case mg_core_workers_manager:get_call_queue(Options, ID) of
                 [] -> ok;
                 Queue -> lists:foreach(fun(Msg) -> ?assertMatch({hello, _Ref}, Msg) end, Queue)
             end;
