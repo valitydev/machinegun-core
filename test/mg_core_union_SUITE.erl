@@ -22,8 +22,6 @@
     reconnect_timeout => ?RECONNECT_TIMEOUT
 }).
 
--export([child_spec_test/1]).
--export([nxdomain_test/1]).
 -export([start_ok_test/1]).
 -export([unknown_nodedown_test/1]).
 -export([exists_nodedown_test/1]).
@@ -54,8 +52,6 @@ all() ->
 groups() ->
     [
         {basic_operations, [], [
-            child_spec_test,
-            nxdomain_test,
             start_ok_test,
             unknown_nodedown_test,
             exists_nodedown_test,
@@ -64,30 +60,6 @@ groups() ->
             cluster_size_test
         ]}
     ].
-
--spec child_spec_test(config()) -> test_result().
-child_spec_test(_Config) ->
-    EmptyChildSpec = mg_core_union:child_spec(#{}),
-    ?assertEqual([], EmptyChildSpec),
-    ExpectedSpec = [
-        #{
-            id => mg_core_union,
-            start => {
-                mg_core_union,
-                start_link,
-                [?CLUSTER_OPTS]
-            }
-        }
-    ],
-    ChildSpec = mg_core_union:child_spec(?CLUSTER_OPTS),
-    ?assertEqual(ExpectedSpec, ChildSpec).
-
--spec nxdomain_test(config()) -> test_result().
-nxdomain_test(_Config) ->
-    ?assertError(
-        {resolve_error, {error, nxdomain}},
-        mg_core_union:discovery(#{<<"domain_name">> => <<"bad_name">>, <<"sname">> => <<"mg">>})
-    ).
 
 -spec start_ok_test(config()) -> test_result().
 start_ok_test(_Config) ->

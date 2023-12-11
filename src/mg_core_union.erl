@@ -204,10 +204,45 @@ addrs_to_nodes(ListAddrs, Sname) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
+-define(CLUSTER_OPTS, #{
+    discovery => #{
+        module => mg_core_union,
+        options => #{
+            <<"domain_name">> => <<"localhost">>,
+            <<"sname">> => <<"test_node">>
+        }
+    },
+    reconnect_timeout => ?RECONNECT_TIMEOUT
+}).
+
 -spec test() -> _.
 
 -spec connect_error_test() -> _.
 connect_error_test() ->
     ?assertEqual(error, connect('foo@127.0.0.1', 3000)).
+
+-spec child_spec_test() -> _.
+child_spec_test() ->
+    EmptyChildSpec = mg_core_union:child_spec(#{}),
+    ?assertEqual([], EmptyChildSpec),
+    ExpectedSpec = [
+        #{
+            id => mg_core_union,
+            start => {
+                mg_core_union,
+                start_link,
+                [?CLUSTER_OPTS]
+            }
+        }
+    ],
+    ChildSpec = mg_core_union:child_spec(?CLUSTER_OPTS),
+    ?assertEqual(ExpectedSpec, ChildSpec).
+
+-spec nxdomain_test() -> _.
+nxdomain_test() ->
+    ?assertError(
+        {resolve_error, {error, nxdomain}},
+        mg_core_union:discovery(#{<<"domain_name">> => <<"bad_name">>, <<"sname">> => <<"mg">>})
+    ).
 
 -endif.
