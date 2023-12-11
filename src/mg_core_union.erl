@@ -25,7 +25,7 @@
 -define(RECONNECT_TIMEOUT, 5000).
 
 -type discovery_options() :: #{
-    module := atom(),
+    module := module(),
     %% options is module specific structure
     options := term()
 }.
