@@ -245,4 +245,10 @@ nxdomain_test() ->
         mg_core_union:discovery(#{<<"domain_name">> => <<"bad_name">>, <<"sname">> => <<"mg">>})
     ).
 
+-spec for_full_cover_test() -> _.
+for_full_cover_test() ->
+    ?assertEqual({noreply, #{}}, handle_cast([], #{})),
+    ?assertEqual(ok, terminate(term, #{})),
+    ?assertEqual({ok, #{}}, code_change(old, #{}, extra)).
+
 -endif.
